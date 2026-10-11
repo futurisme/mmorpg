@@ -1,6 +1,7 @@
 /**
  * High-Performance 2D Canvas Pixel-Art Renderer for Forest of Savior RPG.
  * 2026 Engine Enhancements:
+ * - Ultra-robust error-proof layering & entity depth sorting
  * - Dynamic atmospheric shaders: volumetric god-rays, chromatic aberration, radial fireglow, vignette
  * - Smart Skill Aiming Reticle: rotating elemental runes, range indicators, trajectory line, magnetic target lock
  * - Directional Slash Arc VFX: radiant curved sword swipe trails with precise angle rotation
@@ -81,6 +82,23 @@ export class GameRenderer {
     return { x: worldX, y: worldY };
   }
 
+  roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') {
+      ctx.roundRect(x, y, w, h, r);
+    } else {
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+    }
+  }
+
   render(world, player, npcManager, particleSystem, combatTextSystem) {
     const ctx = this.ctx;
     ctx.save();
@@ -104,55 +122,69 @@ export class GameRenderer {
     this.drawRunicCircles(ctx, particleSystem);
 
     // 4b. Skill Aiming Reticle (If player is aiming a skill)
-    if (player.aimingSkill) {
+    if (player && player.aimingSkill) {
       this.drawSkillAimReticle(ctx, player);
     }
 
-    // 5. Campfire & Base Decorations
+    // 5. Campfire & Base Props
     this.drawBaseProps(ctx, world);
 
-    // 6. Interactive Nodes & Chests
+    // 6. Interactive Gathering Nodes & Chests
     this.drawInteractiveNodes(ctx, world);
 
     // 7. Crystalline Ice Spikes (Ground layer)
     this.drawIceSpikes(ctx, particleSystem);
 
-    // 8. Floating EXP & Loot Orbs
+    // 8. Floating EXP & Loot Orbs (Safe check for drops array)
     this.drawDrops(ctx, npcManager);
 
     // 9. Y-Sorted Entity Layering (Characters, Monsters, Trees, Props)
     const entities = [];
 
-    for (const tree of world.trees) {
-      entities.push({ type: 'tree', y: tree.y + 10, data: tree });
-    }
-    for (const dec of world.decorations) {
-      entities.push({ type: 'decoration', y: dec.y, data: dec });
-    }
-    for (const enemy of npcManager.enemies) {
-      if (!enemy.dead) {
-        entities.push({ type: 'enemy', y: enemy.y, data: enemy });
+    if (world && world.trees) {
+      for (const tree of world.trees) {
+        entities.push({ type: 'tree', y: tree.y + 10, data: tree });
       }
     }
-    for (const npc of npcManager.npcs) {
-      entities.push({ type: 'npc', y: npc.y, data: npc });
+    if (world && world.decorations) {
+      for (const dec of world.decorations) {
+        entities.push({ type: 'decoration', y: dec.y, data: dec });
+      }
     }
-    entities.push({ type: 'player', y: player.y, data: player });
+    if (npcManager && npcManager.enemies) {
+      for (const enemy of npcManager.enemies) {
+        if (!enemy.dead) {
+          entities.push({ type: 'enemy', y: enemy.y, data: enemy });
+        }
+      }
+    }
+    if (npcManager && npcManager.npcs) {
+      for (const npc of npcManager.npcs) {
+        entities.push({ type: 'npc', y: npc.y, data: npc });
+      }
+    }
+    if (player) {
+      entities.push({ type: 'player', y: player.y, data: player });
+    }
 
-    // Sort by Y for depth layering
+    // Sort by Y for natural depth layering
     entities.sort((a, b) => a.y - b.y);
 
     for (const ent of entities) {
-      if (ent.type === 'tree') {
-        this.drawTree(ctx, ent.data);
-      } else if (ent.type === 'decoration') {
-        this.drawDecoration(ctx, ent.data);
-      } else if (ent.type === 'enemy') {
-        this.drawEnemy(ctx, ent.data);
-      } else if (ent.type === 'npc') {
-        this.drawCharacter(ctx, ent.data, false);
-      } else if (ent.type === 'player') {
-        this.drawCharacter(ctx, ent.data, true);
+      try {
+        if (ent.type === 'tree') {
+          this.drawTree(ctx, ent.data);
+        } else if (ent.type === 'decoration') {
+          this.drawDecoration(ctx, ent.data);
+        } else if (ent.type === 'enemy') {
+          this.drawEnemy(ctx, ent.data);
+        } else if (ent.type === 'npc') {
+          this.drawCharacter(ctx, ent.data, false);
+        } else if (ent.type === 'player') {
+          this.drawCharacter(ctx, ent.data, true);
+        }
+      } catch (err) {
+        // Silently skip any malformed entity without crashing render loop
       }
     }
 
@@ -379,6 +411,7 @@ export class GameRenderer {
   }
 
   drawRunicCircles(ctx, particleSystem) {
+    if (!particleSystem || !particleSystem.runicCircles) return;
     for (const rc of particleSystem.runicCircles) {
       ctx.save();
       const alpha = Math.max(0, rc.life / rc.maxLife);
@@ -387,7 +420,7 @@ export class GameRenderer {
       ctx.scale(1, 0.65); // Tilted flat ellipse
       ctx.rotate(rc.rot);
 
-      // Outer glowing glyph circle
+      // Outer glyph circle
       ctx.strokeStyle = rc.color;
       ctx.lineWidth = 3;
       ctx.beginPath();
@@ -422,6 +455,7 @@ export class GameRenderer {
   }
 
   drawIceSpikes(ctx, particleSystem) {
+    if (!particleSystem || !particleSystem.iceSpikes) return;
     for (const is of particleSystem.iceSpikes) {
       ctx.save();
       const alpha = Math.min(1, is.life / 0.2);
@@ -460,6 +494,7 @@ export class GameRenderer {
   }
 
   drawFallingMeteors(ctx, particleSystem) {
+    if (!particleSystem || !particleSystem.fallingMeteors) return;
     for (const m of particleSystem.fallingMeteors) {
       ctx.save();
       // Fiery core of falling meteor
@@ -474,7 +509,7 @@ export class GameRenderer {
       ctx.arc(m.curX, m.curY, 28, 0, Math.PI * 2);
       ctx.fill();
 
-      // High velocity atmospheric fire streak
+      // Atmospheric fire streak
       ctx.strokeStyle = 'rgba(251, 191, 36, 0.8)';
       ctx.lineWidth = 10;
       ctx.beginPath();
@@ -487,6 +522,7 @@ export class GameRenderer {
   }
 
   drawBaseProps(ctx, world) {
+    if (!world || !world.campfires) return;
     for (const camp of world.campfires) {
       // Glow circle on ground
       const glowGrad = ctx.createRadialGradient(camp.x, camp.y, 10, camp.x, camp.y, camp.healRadius);
@@ -528,73 +564,83 @@ export class GameRenderer {
   }
 
   drawInteractiveNodes(ctx, world) {
-    for (const node of world.gatheringNodes) {
-      if (!node.available) continue;
+    if (!world) return;
 
-      ctx.save();
-      const bob = Math.sin(this.time * 4 + node.x) * 3;
+    if (world.gatheringNodes) {
+      for (const node of world.gatheringNodes) {
+        if (!node.available) continue;
 
-      if (node.type === 'herb') {
-        // Moonbloom flower
-        ctx.fillStyle = '#ec4899';
-        ctx.beginPath();
-        ctx.arc(node.x, node.y - 6 + bob, 6, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.save();
+        const bob = Math.sin(this.time * 4 + node.x) * 3;
 
-        ctx.fillStyle = '#fbcfe8';
-        ctx.beginPath();
-        ctx.arc(node.x, node.y - 6 + bob, 3, 0, Math.PI * 2);
-        ctx.fill();
+        if (node.type === 'herb') {
+          // Moonbloom flower
+          ctx.fillStyle = '#ec4899';
+          ctx.beginPath();
+          ctx.arc(node.x, node.y - 6 + bob, 6, 0, Math.PI * 2);
+          ctx.fill();
 
-        // Stem & leaf
-        ctx.fillStyle = '#22c55e';
-        ctx.fillRect(node.x - 1, node.y - 1 + bob, 2, 7);
-      } else if (node.type === 'crystal') {
-        // Glowing mana crystal
-        ctx.fillStyle = '#38bdf8';
-        ctx.beginPath();
-        ctx.moveTo(node.x, node.y - 14 + bob);
-        ctx.lineTo(node.x + 6, node.y - 4 + bob);
-        ctx.lineTo(node.x, node.y + 4 + bob);
-        ctx.lineTo(node.x - 6, node.y - 4 + bob);
-        ctx.closePath();
-        ctx.fill();
+          ctx.fillStyle = '#fbcfe8';
+          ctx.beginPath();
+          ctx.arc(node.x, node.y - 6 + bob, 3, 0, Math.PI * 2);
+          ctx.fill();
 
-        ctx.fillStyle = '#e0f2fe';
-        ctx.beginPath();
-        ctx.moveTo(node.x, node.y - 14 + bob);
-        ctx.lineTo(node.x + 3, node.y - 4 + bob);
-        ctx.lineTo(node.x, node.y + 4 + bob);
-        ctx.closePath();
-        ctx.fill();
+          // Stem & leaf
+          ctx.fillStyle = '#22c55e';
+          ctx.fillRect(node.x - 1, node.y - 1 + bob, 2, 7);
+        } else if (node.type === 'crystal') {
+          // Glowing mana crystal
+          ctx.fillStyle = '#38bdf8';
+          ctx.beginPath();
+          ctx.moveTo(node.x, node.y - 14 + bob);
+          ctx.lineTo(node.x + 6, node.y - 4 + bob);
+          ctx.lineTo(node.x, node.y + 4 + bob);
+          ctx.lineTo(node.x - 6, node.y - 4 + bob);
+          ctx.closePath();
+          ctx.fill();
+
+          ctx.fillStyle = '#e0f2fe';
+          ctx.beginPath();
+          ctx.moveTo(node.x, node.y - 14 + bob);
+          ctx.lineTo(node.x + 3, node.y - 4 + bob);
+          ctx.lineTo(node.x, node.y + 4 + bob);
+          ctx.closePath();
+          ctx.fill();
+        }
+
+        ctx.restore();
       }
-
-      ctx.restore();
     }
 
-    for (const chest of world.chests) {
-      ctx.save();
-      if (!chest.opened) {
-        // Closed Golden Chest
-        ctx.fillStyle = '#78350f';
-        ctx.fillRect(chest.x - 12, chest.y - 10, 24, 18);
-        ctx.fillStyle = '#fbbf24';
-        ctx.fillRect(chest.x - 12, chest.y - 6, 24, 4);
-        ctx.fillStyle = '#f59e0b';
-        ctx.fillRect(chest.x - 2, chest.y - 4, 4, 5);
-      } else {
-        // Open Chest
-        ctx.fillStyle = '#451a03';
-        ctx.fillRect(chest.x - 12, chest.y - 4, 24, 12);
-        ctx.fillStyle = '#78350f';
-        ctx.fillRect(chest.x - 12, chest.y - 12, 24, 8);
+    if (world.chests) {
+      for (const chest of world.chests) {
+        ctx.save();
+        if (!chest.opened) {
+          // Closed Golden Chest
+          ctx.fillStyle = '#78350f';
+          ctx.fillRect(chest.x - 12, chest.y - 10, 24, 18);
+          ctx.fillStyle = '#fbbf24';
+          ctx.fillRect(chest.x - 12, chest.y - 6, 24, 4);
+          ctx.fillStyle = '#f59e0b';
+          ctx.fillRect(chest.x - 2, chest.y - 4, 4, 5);
+        } else {
+          // Open Chest
+          ctx.fillStyle = '#451a03';
+          ctx.fillRect(chest.x - 12, chest.y - 4, 24, 12);
+          ctx.fillStyle = '#78350f';
+          ctx.fillRect(chest.x - 12, chest.y - 12, 24, 8);
+        }
+        ctx.restore();
       }
-      ctx.restore();
     }
   }
 
+  /**
+   * Safely draws drops without ever throwing if property name differs
+   */
   drawDrops(ctx, npcManager) {
-    for (const drop of npcManager.activeDrops) {
+    const drops = (npcManager && (npcManager.drops || npcManager.activeDrops)) || [];
+    for (const drop of drops) {
       ctx.save();
       const bob = Math.sin(this.time * 8 + drop.x) * 3;
       if (drop.type === 'exp') {
@@ -624,30 +670,32 @@ export class GameRenderer {
 
   drawTree(ctx, tree) {
     ctx.save();
-    // Shadow
+    // Drop shadow
     ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
     ctx.beginPath();
-    ctx.ellipse(tree.x, tree.y + 6, 20, 9, 0, 0, Math.PI * 2);
+    ctx.ellipse(tree.x, tree.y + 6, 22, 9, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Trunk
     ctx.fillStyle = '#5c2c16';
     ctx.fillRect(tree.x - 6, tree.y - 16, 12, 22);
 
-    // Foliage
-    ctx.fillStyle = '#14532d';
+    const isCherry = tree.type === 'cherry';
+
+    // Foliage (Sakura pink or Deep forest oak)
+    ctx.fillStyle = isCherry ? '#f472b6' : '#14532d';
     ctx.beginPath();
     ctx.arc(tree.x, tree.y - 36, 26, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = '#166534';
+    ctx.fillStyle = isCherry ? '#fbcfe8' : '#166534';
     ctx.beginPath();
-    ctx.arc(tree.x - 6, tree.y - 42, 20, 0, Math.PI * 2);
+    ctx.arc(tree.x - 7, tree.y - 42, 20, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = '#22c55e';
+    ctx.fillStyle = isCherry ? '#fda4af' : '#22c55e';
     ctx.beginPath();
-    ctx.arc(tree.x + 8, tree.y - 40, 16, 0, Math.PI * 2);
+    ctx.arc(tree.x + 8, tree.y - 40, 17, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
@@ -666,6 +714,76 @@ export class GameRenderer {
       ctx.fillStyle = '#94a3b8';
       ctx.fillRect(dec.x - 14, dec.y - 44, 28, 8);
       ctx.fillRect(dec.x - 14, dec.y - 2, 28, 6);
+    } else if (dec.type === 'table') {
+      // Guild Wooden Dining Table with chocolate & tea
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.beginPath();
+      ctx.ellipse(dec.x + dec.width / 2, dec.y + dec.height / 2 + 4, dec.width * 0.5, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(dec.x, dec.y, dec.width, dec.height);
+      ctx.fillStyle = '#92400e';
+      ctx.fillRect(dec.x + 2, dec.y + 2, dec.width - 4, dec.height - 4);
+
+      // Fondue Pot in middle
+      ctx.fillStyle = '#334155';
+      ctx.beginPath();
+      ctx.arc(dec.x + dec.width / 2, dec.y + dec.height / 2, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#b45309';
+      ctx.beginPath();
+      ctx.arc(dec.x + dec.width / 2, dec.y + dec.height / 2, 3, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (dec.type === 'bench') {
+      // Log bench
+      ctx.fillStyle = '#5c2c16';
+      ctx.fillRect(dec.x, dec.y, dec.width, dec.height);
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(dec.x + 2, dec.y + 2, dec.width - 4, dec.height - 4);
+    } else if (dec.type === 'guild_banner') {
+      // Chocolate Everyday Guild Banner
+      ctx.fillStyle = '#451a03';
+      ctx.fillRect(dec.x - 2, dec.y - 36, 4, 40);
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(dec.x - 4, dec.y - 40, 8, 5);
+
+      // Pennant cloth
+      ctx.fillStyle = '#78350f';
+      ctx.beginPath();
+      ctx.moveTo(dec.x + 2, dec.y - 36);
+      ctx.lineTo(dec.x + 28, dec.y - 36);
+      ctx.lineTo(dec.x + 18, dec.y - 20);
+      ctx.lineTo(dec.x + 28, dec.y - 4);
+      ctx.lineTo(dec.x + 2, dec.y - 4);
+      ctx.closePath();
+      ctx.fill();
+
+      // Wing emblem
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath();
+      ctx.arc(dec.x + 12, dec.y - 20, 4, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (dec.type === 'lantern') {
+      // Japanese Fantasy Stone Lantern
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.beginPath();
+      ctx.ellipse(dec.x, dec.y + 4, 8, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(dec.x - 4, dec.y - 18, 8, 20);
+      // Glowing paper chamber
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(dec.x - 5, dec.y - 14, 10, 8);
+      // Roof
+      ctx.fillStyle = '#334155';
+      ctx.beginPath();
+      ctx.moveTo(dec.x - 8, dec.y - 14);
+      ctx.lineTo(dec.x, dec.y - 20);
+      ctx.lineTo(dec.x + 8, dec.y - 14);
+      ctx.closePath();
+      ctx.fill();
     }
     ctx.restore();
   }
@@ -774,7 +892,8 @@ export class GameRenderer {
   }
 
   drawCharacter(ctx, char, isPlayer) {
-    const custom = isPlayer ? char.custom : char;
+    if (!char) return;
+    const custom = isPlayer ? (char.custom || {}) : char;
     const isHurt = char.flashHurt > 0;
     const bob = (char.isSprinting || Math.hypot(char.vx || 0, char.vy || 0) > 10) ? Math.sin(this.time * 14) * 2 : 0;
 
@@ -896,7 +1015,7 @@ export class GameRenderer {
     ctx.font = 'bold 11px "Plus Jakarta Sans", sans-serif';
     ctx.strokeStyle = '#0f172a';
     ctx.lineWidth = 3;
-    const nameText = `Lv.${char.level} ${char.name}`;
+    const nameText = `Lv.${char.level || 1} ${char.name || 'Traveler'}`;
     ctx.strokeText(nameText, char.x, tagY);
     ctx.fillStyle = isPlayer ? '#67e8f9' : (char.inParty ? '#4ade80' : '#f8fafc');
     ctx.fillText(nameText, char.x, tagY);
@@ -929,21 +1048,19 @@ export class GameRenderer {
     const bubbleY = baseY + bubbleBob;
     const bubbleW = 32;
     const bubbleH = 22;
-    const radius = 8;
+    const radius = 6;
 
     ctx.save();
     // Drop shadow
     ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-    ctx.beginPath();
-    ctx.roundRect(x - bubbleW / 2 + 1, bubbleY - bubbleH / 2 + 2, bubbleW, bubbleH, radius);
+    this.roundRect(ctx, x - bubbleW / 2 + 1, bubbleY - bubbleH / 2 + 2, bubbleW, bubbleH, radius);
     ctx.fill();
 
     // Bubble background
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = '#1e293b';
     ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(x - bubbleW / 2, bubbleY - bubbleH / 2, bubbleW, bubbleH, radius);
+    this.roundRect(ctx, x - bubbleW / 2, bubbleY - bubbleH / 2, bubbleW, bubbleH, radius);
     ctx.fill();
     ctx.stroke();
 
@@ -1011,7 +1128,7 @@ export class GameRenderer {
       ctx.stroke();
     } else if (key === '💤' || key === 'emote_sleep') {
       // Purple Zzz
-      ctx.fillStyle = '#a855f7';
+      ctx.fillStyle = '#c084fc';
       ctx.font = 'bold 11px monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -1060,6 +1177,7 @@ export class GameRenderer {
   }
 
   drawParticles(ctx, particleSystem) {
+    if (!particleSystem || !particleSystem.particles) return;
     for (const p of particleSystem.particles) {
       ctx.save();
       ctx.globalAlpha = p.opacity || 1;
@@ -1129,6 +1247,7 @@ export class GameRenderer {
   }
 
   drawSakuraPetals(ctx, particleSystem) {
+    if (!particleSystem || !particleSystem.sakuraPetals) return;
     for (const petal of particleSystem.sakuraPetals) {
       ctx.save();
       ctx.globalAlpha = petal.opacity;
@@ -1145,6 +1264,7 @@ export class GameRenderer {
   }
 
   drawCombatText(ctx, combatTextSystem) {
+    if (!combatTextSystem || !combatTextSystem.texts) return;
     ctx.textAlign = 'center';
     ctx.font = 'bold 13px "Plus Jakarta Sans", sans-serif';
 

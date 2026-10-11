@@ -101,9 +101,9 @@ export class UIManager {
         <!-- Minimap Panel -->
         <div id="minimap-panel" class="rpg-panel rounded-xl p-2 shadow-xl border border-slate-700/60 flex flex-col items-center transition-all">
           <div class="flex items-center justify-between w-full mb-1">
-            <div class="text-[10px] font-bold text-amber-200 tracking-wide flex items-center gap-1 truncate max-w-[120px]">
+            <div class="text-[10px] font-bold text-amber-200 tracking-wide flex items-center gap-1.5 min-w-0 flex-1" title="Current Territory">
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
-              <span id="hud-zone-name" class="truncate">Camp</span>
+              <span id="hud-zone-name" class="truncate">Chocolate Guild Camp</span>
             </div>
             <button id="toggle-minimap-btn" class="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-[10px] font-bold flex items-center justify-center border border-slate-700 ml-1" title="Collapse/Expand Radar">
               −
