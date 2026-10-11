@@ -1,0 +1,6 @@
+{
+  "name": "Forest of Savior - Anime RPG",
+  "description": "Retro pixel-art open-world anime RPG inspired by Forest of Savior (Yamada-kun Lv999), featuring intelligent NPCs, responsive keyboard controls, camera perspective switching, and character customization.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

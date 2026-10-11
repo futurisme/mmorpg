@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Forest of Savior - Anime RPG</title>
+    <meta name="description" content="Retro pixel-art open-world anime RPG inspired by Forest of Savior (Yamada-kun Lv999), featuring intelligent NPCs, responsive keyboard controls, camera perspective switching, and character customization." />
+    <meta property="og:title" content="Forest of Savior - Anime RPG" />
+    <meta property="og:description" content="Retro pixel-art open-world anime RPG inspired by Forest of Savior (Yamada-kun Lv999), featuring intelligent NPCs, responsive keyboard controls, camera perspective switching, and character customization." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/src/index.css" />
+  </head>
+  <body class="bg-slate-950 text-slate-100 select-none overflow-hidden m-0 p-0 w-screen h-screen">
+    <div id="game-container" class="relative w-full h-full overflow-hidden bg-slate-950">
+      <!-- Game Canvas -->
+      <canvas id="game-canvas" class="block w-full h-full cursor-crosshair"></canvas>
+
+      <!-- Mount for UI HUD, Dialogue, Customization, Inventory, Quests, Emotes -->
+      <div id="game-ui" class="absolute inset-0 pointer-events-none"></div>
+    </div>
+
+    <!-- 100% Pure JavaScript entry point (No TSX / TypeScript) -->
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
