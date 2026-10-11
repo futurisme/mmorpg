@@ -1,6 +1,7 @@
 /**
- * Particle Effects & Floating Combat Text for Forest of Savior RPG.
- * Anime aesthetics with drifting sakura petals, arcane fire, ice mist, and meteors.
+ * Advanced Particle Effects & Spell VFX for Forest of Savior RPG.
+ * Anime aesthetics with falling celestial meteors, rotating runic summon circles,
+ * crystalline ice spikes, shockwaves, drifting sakura petals, and floating combat text.
  * 100% pure JavaScript.
  */
 
@@ -8,6 +9,9 @@ export class ParticleSystem {
   constructor() {
     this.particles = [];
     this.sakuraPetals = [];
+    this.runicCircles = [];
+    this.fallingMeteors = [];
+    this.iceSpikes = [];
     this.maxSakura = 45;
     this.screenShake = 0;
     this.shakeDecay = 12;
@@ -55,6 +59,70 @@ export class ParticleSystem {
       p.opacity = Math.max(0, p.life / p.maxLife);
     }
 
+    // Update Runic Summon Circles
+    for (let i = this.runicCircles.length - 1; i >= 0; i--) {
+      const rc = this.runicCircles[i];
+      rc.life -= dt;
+      rc.rot += rc.rotSpeed * dt;
+      if (rc.life <= 0) {
+        this.runicCircles.splice(i, 1);
+      }
+    }
+
+    // Update Falling Meteors
+    for (let i = this.fallingMeteors.length - 1; i >= 0; i--) {
+      const m = this.fallingMeteors[i];
+      m.progress += dt / m.duration;
+      m.curX = m.startX + (m.targetX - m.startX) * m.progress;
+      m.curY = m.startY + (m.targetY - m.startY) * m.progress;
+
+      // Trailing flame particles
+      if (Math.random() < 0.6) {
+        this.particles.push({
+          x: m.curX + (Math.random() - 0.5) * 16,
+          y: m.curY + (Math.random() - 0.5) * 16,
+          vx: -(m.targetX - m.startX) * 0.05 + (Math.random() - 0.5) * 30,
+          vy: -(m.targetY - m.startY) * 0.05 + (Math.random() - 0.5) * 30,
+          size: 6 + Math.random() * 6,
+          color: Math.random() < 0.5 ? '#f43f5e' : '#fbbf24',
+          life: 0.35,
+          maxLife: 0.35,
+          type: 'fire'
+        });
+      }
+
+      if (m.progress >= 1) {
+        // Impact!
+        this.addScreenShake(14);
+        this.createMeteorImpactCrater(m.targetX, m.targetY);
+        this.fallingMeteors.splice(i, 1);
+      }
+    }
+
+    // Update Ice Spikes
+    for (let i = this.iceSpikes.length - 1; i >= 0; i--) {
+      const is = this.iceSpikes[i];
+      is.life -= dt;
+      if (is.life <= 0) {
+        // Shatter
+        for (let s = 0; s < 4; s++) {
+          this.particles.push({
+            x: is.x,
+            y: is.y,
+            vx: (Math.random() - 0.5) * 100,
+            vy: -40 - Math.random() * 60,
+            size: 3 + Math.random() * 3,
+            color: '#e0f2fe',
+            life: 0.3,
+            maxLife: 0.3,
+            gravity: 120,
+            type: 'ice'
+          });
+        }
+        this.iceSpikes.splice(i, 1);
+      }
+    }
+
     // Update ambient Sakura petals
     for (const petal of this.sakuraPetals) {
       petal.x += petal.speedX * dt;
@@ -74,13 +142,13 @@ export class ParticleSystem {
   addHitSpark(x, y) {
     for (let i = 0; i < 8; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 60 + Math.random() * 120;
+      const speed = 70 + Math.random() * 130;
       this.particles.push({
         x,
         y,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
-        size: 2.5 + Math.random() * 2.5,
+        size: 3 + Math.random() * 2.5,
         color: '#fef08a',
         life: 0.25,
         maxLife: 0.25,
@@ -96,10 +164,10 @@ export class ParticleSystem {
       vx: 0,
       vy: 0,
       facing,
-      life: 0.18,
-      maxLife: 0.18,
+      life: 0.22,
+      maxLife: 0.22,
       type: 'slash_arc',
-      color: '#ffffff'
+      color: '#38bdf8'
     });
   }
 
@@ -118,16 +186,28 @@ export class ParticleSystem {
   }
 
   addFireRing(x, y) {
-    this.addScreenShake(3);
-    for (let i = 0; i < 28; i++) {
-      const angle = (i / 28) * Math.PI * 2;
-      const speed = 90 + Math.random() * 50;
+    this.addScreenShake(4);
+    // Add glowing ground rune circle
+    this.runicCircles.push({
+      x,
+      y,
+      radius: 70,
+      color: '#f97316',
+      rot: 0,
+      rotSpeed: 2.5,
+      life: 0.6,
+      maxLife: 0.6
+    });
+
+    for (let i = 0; i < 30; i++) {
+      const angle = (i / 30) * Math.PI * 2;
+      const speed = 100 + Math.random() * 60;
       this.particles.push({
         x: x + Math.cos(angle) * 15,
         y: y + Math.sin(angle) * 15,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
-        size: 5 + Math.random() * 4,
+        size: 5 + Math.random() * 5,
         color: i % 2 === 0 ? '#f97316' : '#ef4444',
         life: 0.45,
         maxLife: 0.45,
@@ -138,10 +218,38 @@ export class ParticleSystem {
   }
 
   addIceNova(x, y) {
-    this.addScreenShake(4);
-    for (let i = 0; i < 24; i++) {
-      const angle = (i / 24) * Math.PI * 2;
-      const speed = 120 + Math.random() * 60;
+    this.addScreenShake(5);
+    // Add ice summon rune
+    this.runicCircles.push({
+      x,
+      y,
+      radius: 95,
+      color: '#38bdf8',
+      rot: 0,
+      rotSpeed: -3.0,
+      life: 0.75,
+      maxLife: 0.75
+    });
+
+    // Spawn 8 crystalline ice spikes around the center
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const dist = 35 + Math.random() * 45;
+      this.iceSpikes.push({
+        x: x + Math.cos(angle) * dist,
+        y: y + Math.sin(angle) * dist,
+        height: 24 + Math.random() * 16,
+        width: 10 + Math.random() * 6,
+        angle: (Math.random() - 0.5) * 0.4,
+        life: 0.7,
+        maxLife: 0.7
+      });
+    }
+
+    // Mist & sparkles
+    for (let i = 0; i < 26; i++) {
+      const angle = (i / 26) * Math.PI * 2;
+      const speed = 130 + Math.random() * 70;
       this.particles.push({
         x: x + Math.cos(angle) * 10,
         y: y + Math.sin(angle) * 10,
@@ -158,20 +266,45 @@ export class ParticleSystem {
   }
 
   addMeteor(targetX, targetY) {
-    this.addScreenShake(12);
-    // Impact blast ring
-    for (let i = 0; i < 40; i++) {
-      const angle = (i / 40) * Math.PI * 2;
-      const speed = 160 + Math.random() * 120;
+    this.addScreenShake(6);
+    // 1. Project large glowing runic summoning matrix on target ground
+    this.runicCircles.push({
+      x: targetX,
+      y: targetY,
+      radius: 120,
+      color: '#f43f5e',
+      rot: 0,
+      rotSpeed: 4.5,
+      life: 1.1,
+      maxLife: 1.1
+    });
+
+    // 2. Launch celestial meteor from high altitude
+    this.fallingMeteors.push({
+      startX: targetX - 260,
+      startY: targetY - 380,
+      targetX,
+      targetY,
+      curX: targetX - 260,
+      curY: targetY - 380,
+      progress: 0,
+      duration: 0.35 // arrives in 350ms
+    });
+  }
+
+  createMeteorImpactCrater(targetX, targetY) {
+    for (let i = 0; i < 45; i++) {
+      const angle = (i / 45) * Math.PI * 2;
+      const speed = 180 + Math.random() * 140;
       this.particles.push({
         x: targetX,
         y: targetY,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
-        size: 6 + Math.random() * 6,
+        size: 6 + Math.random() * 7,
         color: i % 3 === 0 ? '#f43f5e' : (i % 3 === 1 ? '#fbbf24' : '#818cf8'),
-        life: 0.7,
-        maxLife: 0.7,
+        life: 0.75,
+        maxLife: 0.75,
         friction: 0.9,
         type: 'meteor_crater'
       });
@@ -179,18 +312,30 @@ export class ParticleSystem {
   }
 
   addHealAura(x, y) {
-    for (let i = 0; i < 16; i++) {
+    // Healing floral ring
+    this.runicCircles.push({
+      x,
+      y,
+      radius: 50,
+      color: '#4ade80',
+      rot: 0,
+      rotSpeed: 2.0,
+      life: 0.5,
+      maxLife: 0.5
+    });
+
+    for (let i = 0; i < 18; i++) {
       const angle = Math.random() * Math.PI * 2;
       const dist = Math.random() * 35;
       this.particles.push({
         x: x + Math.cos(angle) * dist,
         y: y + Math.sin(angle) * dist,
         vx: (Math.random() - 0.5) * 20,
-        vy: -40 - Math.random() * 30,
+        vy: -45 - Math.random() * 35,
         size: 4 + Math.random() * 3,
         color: '#4ade80',
-        life: 0.6,
-        maxLife: 0.6,
+        life: 0.65,
+        maxLife: 0.65,
         type: 'spark'
       });
     }
@@ -210,16 +355,16 @@ export class ParticleSystem {
   }
 
   addGroundSlam(x, y) {
-    this.addScreenShake(7);
-    for (let i = 0; i < 20; i++) {
-      const angle = (i / 20) * Math.PI * 2;
-      const dist = 30 + Math.random() * 20;
+    this.addScreenShake(8);
+    for (let i = 0; i < 24; i++) {
+      const angle = (i / 24) * Math.PI * 2;
+      const dist = 30 + Math.random() * 25;
       this.particles.push({
         x: x + Math.cos(angle) * dist,
         y: y + Math.sin(angle) * dist,
-        vx: Math.cos(angle) * 70,
-        vy: Math.sin(angle) * 70,
-        size: 5 + Math.random() * 3,
+        vx: Math.cos(angle) * 75,
+        vy: Math.sin(angle) * 75,
+        size: 5 + Math.random() * 4,
         color: '#a8a29e',
         life: 0.5,
         maxLife: 0.5,

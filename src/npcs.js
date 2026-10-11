@@ -1,7 +1,10 @@
 /**
- * Intelligent Autonomous NPCs & Monster AI Engine for Forest of Savior.
- * NPCs have personal goals, independent grinding, real-time EXP progression,
- * autonomous herb gathering, combat support, dynamic reactions, and lifecycles.
+ * Enhanced Intelligent Autonomous NPCs & Monster AI Engine for Forest of Savior.
+ * Features:
+ * - Tactical formation & role-based behavior (Nuker, Skirmisher, Tank, Commander)
+ * - Emergency rescue coordination: Yamada rushes to save Akane when she is endangered
+ * - Cozy campfire guild banter & real-time chat between NPCs
+ * - Autonomous herb harvesting, monster hunting, potion usage, and real-time level progression
  * 100% pure JavaScript.
  */
 
@@ -13,26 +16,26 @@ export class NPCManager {
     this.npcs = [];
     this.enemies = [];
     this.drops = []; // floating loot / exp orbs
+    this.banterTimer = 15.0; // cozy guild campfire banter interval
 
     this.initNPCs();
     this.initEnemies();
   }
 
   initNPCs() {
-    // 1. Akito Yamada (Lv. 999 Wizard - "Akito Yamada")
-    // Personal Goal: Elite Monster Hunter & Solo Dungeon Farmer
+    // 1. Akito Yamada (Lv. 999 Archmage - "Akito Yamada")
     this.npcs.push({
       id: 'yamada',
       name: 'Yamada',
       title: 'Lv. 999 Archmage',
       guild: 'Chocolate Everyday',
-      x: 1280, // Separated initial positions to prevent crowding!
+      x: 1280,
       y: 1320,
       spawnX: 1280,
       spawnY: 1320,
       vx: 0,
       vy: 0,
-      speed: 130,
+      speed: 135,
       hair: 'afro', // iconic anime afro
       hairColor: '#1e293b',
       afroToggle: true,
@@ -49,10 +52,10 @@ export class NPCManager {
       inParty: false,
       attackCooldown: 0,
       castTimer: 0,
-      castSpell: null,
-      state: 'AUTONOMOUS_HUNT', // 'AUTONOMOUS_HUNT', 'COMBAT', 'MEDITATE', 'PARTY_FOLLOW'
+      state: 'AUTONOMOUS_HUNT', // 'AUTONOMOUS_HUNT', 'COMBAT', 'RESCUE_AKANE', 'MEDITATE', 'PARTY_FOLLOW'
       targetEnemy: null,
       aiTimer: 2.0,
+      potions: 5,
       personalGoal: 'Grinding High-Tier Mobs & Guarding Guild',
       dialogueIndex: 0,
       dialogues: [
@@ -84,7 +87,6 @@ export class NPCManager {
     });
 
     // 2. Akane Kinoshita (Lv. 18 Paladin - "Akane Kinoshita")
-    // Personal Goal: Gathering Moonbloom herbs & leveling up to Lv. 25
     this.npcs.push({
       id: 'akane',
       name: 'Akane',
@@ -98,7 +100,7 @@ export class NPCManager {
       vy: 0,
       speed: 115,
       hair: 'twintails',
-      hairColor: '#f472b6', // cute peach pink
+      hairColor: '#f472b6',
       skinColor: '#fde047',
       outfit: 'paladin',
       weapon: 'sword',
@@ -117,6 +119,7 @@ export class NPCManager {
       targetEnemy: null,
       aiTimer: 1.5,
       herbsCollected: 0,
+      potions: 3,
       personalGoal: 'Harvesting Moonblooms & Leveling Up',
       dialogueIndex: 0,
       dialogues: [
@@ -142,7 +145,6 @@ export class NPCManager {
     });
 
     // 3. Princess Rurihime / Eita Sasaki (Lv. 88 Guildmaster)
-    // Personal Goal: Inspecting guild territory, delivering chocolate buffs & wolf hunting
     this.npcs.push({
       id: 'rurihime',
       name: 'Rurihime (Eita)',
@@ -156,7 +158,7 @@ export class NPCManager {
       vy: 0,
       speed: 105,
       hair: 'long_bangs',
-      hairColor: '#fde047', // blonde princess
+      hairColor: '#fde047',
       skinColor: '#fde047',
       outfit: 'princess',
       weapon: 'staff',
@@ -168,9 +170,10 @@ export class NPCManager {
       exp: 1200,
       expToNext: 4000,
       inParty: false,
-      state: 'PATROL_CAMP', // 'PATROL_CAMP', 'HUNT_WOLVES', 'BUFF_PARTY'
+      state: 'PATROL_CAMP',
       aiTimer: 3.0,
       attackCooldown: 0,
+      potions: 4,
       personalGoal: 'Guild Leader Patrol & Slaying Glade Wolves',
       dialogueIndex: 0,
       dialogues: [
@@ -197,7 +200,6 @@ export class NPCManager {
     });
 
     // 4. Takezo Kamota (Lv. 72 Guardian)
-    // Personal Goal: Campfire guardian, timber gathering, taunting predators
     this.npcs.push({
       id: 'takezo',
       name: 'Takezo',
@@ -226,6 +228,7 @@ export class NPCManager {
       state: 'GUARD_CAMPFIRE',
       aiTimer: 4.0,
       attackCooldown: 0,
+      potions: 5,
       personalGoal: 'Defending Campfire & Chopping Wood',
       dialogueIndex: 0,
       dialogues: [
@@ -321,6 +324,13 @@ export class NPCManager {
   }
 
   update(dt, player, particleSystem, combatTextSystem, uiManager) {
+    // Campfire Guild Banter Timer
+    this.banterTimer -= dt;
+    if (this.banterTimer <= 0) {
+      this.banterTimer = 22 + Math.random() * 15;
+      this.triggerCozyCampfireBanter(uiManager);
+    }
+
     // 1. Update Autonomous NPCs
     for (const npc of this.npcs) {
       if (npc.emoteTimer > 0) {
@@ -329,6 +339,16 @@ export class NPCManager {
       }
       if (npc.attackCooldown > 0) npc.attackCooldown -= dt;
       if (npc.healCooldown > 0) npc.healCooldown -= dt;
+
+      // Potion usage when critically injured
+      if (npc.hp < npc.maxHp * 0.35 && npc.potions > 0 && npc.healCooldown <= 0) {
+        npc.potions -= 1;
+        npc.healCooldown = 4.0;
+        sound.playHeal();
+        npc.hp = Math.min(npc.maxHp, npc.hp + 150);
+        particleSystem.addHealAura(npc.x, npc.y);
+        combatTextSystem.addText(npc.x, npc.y - 25, '+150 HP (Potion)', '#4ade80');
+      }
 
       // Natural recovery near campfire or over time
       if (Math.hypot(npc.x - 1400, npc.y - 1400) < 180) {
@@ -346,7 +366,7 @@ export class NPCManager {
       }
     }
 
-    // 2. Update Enemies (attacking, chasing, patrolling)
+    // 2. Update Enemies (Attacking, chasing, patrolling)
     for (const enemy of this.enemies) {
       if (enemy.dead) {
         enemy.respawnTimer -= dt;
@@ -379,14 +399,12 @@ export class NPCManager {
       let aggroTarget = null;
       let minAggroDist = enemy.isBoss ? 350 : 220;
 
-      // Check player
       const dPlayer = Math.hypot(player.x - enemy.x, player.y - enemy.y);
       if (dPlayer <= minAggroDist && player.hp > 0) {
         aggroTarget = player;
         minAggroDist = dPlayer;
       }
 
-      // Check NPCs
       for (const npc of this.npcs) {
         const dNpc = Math.hypot(npc.x - enemy.x, npc.y - enemy.y);
         if (dNpc <= minAggroDist && npc.hp > 0) {
@@ -398,7 +416,6 @@ export class NPCManager {
       if (aggroTarget) {
         enemy.state = 'chase';
         if (minAggroDist <= enemy.attackRange) {
-          // Strike target
           if (enemy.attackCooldown <= 0) {
             enemy.attackCooldown = enemy.isBoss ? 2.2 : 1.2;
             sound.playHit();
@@ -414,7 +431,6 @@ export class NPCManager {
             }
           }
         } else {
-          // Approach target
           const angle = Math.atan2(aggroTarget.y - enemy.y, aggroTarget.x - enemy.x);
           const nextX = enemy.x + Math.cos(angle) * enemy.speed * dt;
           const nextY = enemy.y + Math.sin(angle) * enemy.speed * dt;
@@ -424,7 +440,6 @@ export class NPCManager {
           }
         }
       } else {
-        // Patrol
         enemy.state = 'patrol';
         enemy.patrolTimer -= dt;
         if (enemy.patrolTimer <= 0) {
@@ -457,17 +472,14 @@ export class NPCManager {
         continue;
       }
 
-      // Magnetize to recipient
       const recipient = drop.recipient || player;
       const d = Math.hypot(recipient.x - drop.x, recipient.y - drop.y);
       if (d < 25) {
-        // Collect!
         if (recipient === player) {
           player.gainExp(drop.exp, combatTextSystem);
           player.gold += drop.gold;
           sound.playPickup();
         } else {
-          // NPC gains EXP!
           this.npcGainExp(recipient, drop.exp, combatTextSystem, uiManager);
         }
         this.drops.splice(i, 1);
@@ -484,21 +496,50 @@ export class NPCManager {
     npc.aiTimer -= dt;
 
     if (npc.id === 'yamada') {
-      // YAMADA: Solo Grinding High-Tier Mobs (Treants, Wolves, Boss)
+      // Check if Akane is screaming for help (Emergency Rescue!)
+      const akane = this.npcs.find(n => n.id === 'akane');
+      if (akane && akane.state === 'FLEE_CAMP' && Math.hypot(akane.x - npc.x, akane.y - npc.y) < 600) {
+        // Yamada rushes to rescue Akane!
+        npc.state = 'RESCUE_AKANE';
+        const dAkane = Math.hypot(akane.x - npc.x, akane.y - npc.y);
+        if (dAkane > 70) {
+          const angle = Math.atan2(akane.y - npc.y, akane.x - npc.x);
+          npc.x += Math.cos(angle) * (npc.speed * 1.5) * dt;
+          npc.y += Math.sin(angle) * (npc.speed * 1.5) * dt;
+        }
+
+        // Frost freeze attackers near Akane!
+        const threatNearAkane = this.findNearestHostile(akane.x, akane.y, 160);
+        if (threatNearAkane && npc.attackCooldown <= 0) {
+          npc.attackCooldown = 2.0;
+          sound.playFrost();
+          particleSystem.addIceNova(threatNearAkane.x, threatNearAkane.y);
+          threatNearAkane.hp -= 600;
+          threatNearAkane.flashHurt = 0.35;
+          combatTextSystem.addText(threatNearAkane.x, threatNearAkane.y - 25, '600! FROST (Yamada Rescue)', '#38bdf8');
+          npc.emote = '✨';
+          npc.emoteTimer = 1.5;
+
+          if (threatNearAkane.hp <= 0 && !threatNearAkane.dead) {
+            this.killEnemyByEntity(threatNearAkane, npc, particleSystem, combatTextSystem, uiManager);
+          }
+        }
+        return;
+      }
+
+      // Solo Grinding High-Tier Mobs (Treants, Wolves, Boss)
       const nearestMonster = this.findNearestHostile(npc.x, npc.y, 450);
 
       if (nearestMonster) {
         npc.state = 'COMBAT';
         const dist = Math.hypot(nearestMonster.x - npc.x, nearestMonster.y - npc.y);
 
-        // Desired casting distance ~140px
         if (dist > 160) {
           const angle = Math.atan2(nearestMonster.y - npc.y, nearestMonster.x - npc.x);
           npc.x += Math.cos(angle) * npc.speed * dt;
           npc.y += Math.sin(angle) * npc.speed * dt;
         }
 
-        // Cast Devastating Lv999 Arcane Spells
         if (npc.attackCooldown <= 0) {
           npc.attackCooldown = 2.0;
           const useFrost = Math.random() < 0.6;
@@ -528,7 +569,6 @@ export class NPCManager {
           }
         }
       } else {
-        // Patrol hunting zones (Whispering Woods or Golem arena)
         npc.state = 'AUTONOMOUS_HUNT';
         if (npc.aiTimer <= 0) {
           npc.aiTimer = 5 + Math.random() * 4;
@@ -552,7 +592,6 @@ export class NPCManager {
     } else if (npc.id === 'akane') {
       // AKANE: Gathers Moonbloom herbs & grinds low-level slimes to level up!
       if (npc.hp < npc.maxHp * 0.4) {
-        // Low HP -> Run to Campfire!
         npc.state = 'FLEE_CAMP';
         const dCamp = Math.hypot(1400 - npc.x, 1400 - npc.y);
         if (dCamp > 30) {
@@ -590,7 +629,6 @@ export class NPCManager {
           npc.x += Math.cos(angle) * npc.speed * dt;
           npc.y += Math.sin(angle) * npc.speed * dt;
         } else {
-          // Harvest herb!
           nearestHerb.available = false;
           nearestHerb.respawnTimer = 25;
           npc.herbsCollected += 1;
@@ -602,7 +640,6 @@ export class NPCManager {
           this.npcGainExp(npc, 35, combatTextSystem, uiManager);
         }
       } else {
-        // Fight nearby Slimes to level up!
         const nearestSlime = this.findNearestHostileByType(npc.x, npc.y, 300, 'slime');
         if (nearestSlime) {
           npc.state = 'FIGHT_SLIMES';
@@ -624,7 +661,6 @@ export class NPCManager {
             }
           }
         } else {
-          // Wander peacefully near grove
           if (npc.aiTimer <= 0) {
             npc.aiTimer = 4 + Math.random() * 3;
             npc.targetX = 1400 + (Math.random() - 0.5) * 300;
@@ -641,7 +677,6 @@ export class NPCManager {
         }
       }
     } else if (npc.id === 'rurihime') {
-      // RURIHIME: Patrols guild borders, hunts wolves to defend camp
       const nearestWolf = this.findNearestHostileByType(npc.x, npc.y, 350, 'wolf');
       if (nearestWolf) {
         npc.state = 'HUNT_WOLVES';
@@ -663,7 +698,6 @@ export class NPCManager {
           }
         }
       } else {
-        // Patrol camp perimeter
         if (npc.aiTimer <= 0) {
           npc.aiTimer = 6;
           const campPoints = [
@@ -683,7 +717,6 @@ export class NPCManager {
         }
       }
     } else if (npc.id === 'takezo') {
-      // TAKEZO: Guards campfire, intercepts aggressive wolves
       const enemyNearCamp = this.findNearestHostile(1400, 1400, 260);
       if (enemyNearCamp) {
         const d = Math.hypot(enemyNearCamp.x - npc.x, enemyNearCamp.y - npc.y);
@@ -704,7 +737,6 @@ export class NPCManager {
           }
         }
       } else {
-        // Stay near campfire post
         const dHome = Math.hypot(npc.spawnX - npc.x, npc.spawnY - npc.y);
         if (dHome > 20) {
           const angle = Math.atan2(npc.spawnY - npc.y, npc.spawnX - npc.x);
@@ -721,7 +753,6 @@ export class NPCManager {
     const dy = player.y - npc.y;
     const dist = Math.hypot(dx, dy);
 
-    // Follow spacing ~70px
     if (dist > 85) {
       const moveAngle = Math.atan2(dy, dx);
       const moveDist = npc.speed * dt;
@@ -733,7 +764,6 @@ export class NPCManager {
       }
     }
 
-    // Yamada combat assist
     if (npc.id === 'yamada') {
       if (npc.attackCooldown <= 0) {
         const target = this.findNearestHostile(npc.x, npc.y, 350);
@@ -765,7 +795,6 @@ export class NPCManager {
       }
     }
 
-    // Akane heal assist
     if (npc.id === 'akane') {
       if (player.hp < player.maxHp * 0.7 && npc.healCooldown <= 0) {
         npc.healCooldown = 5.0;
@@ -809,6 +838,33 @@ export class NPCManager {
     }
   }
 
+  triggerCozyCampfireBanter(uiManager) {
+    if (!uiManager) return;
+    const banters = [
+      { sender: 'Rurihime', text: 'Yamada-kun, try this special strawberry chocolate cake! It gives +20% magic casting speed!' },
+      { sender: 'Yamada', text: '...Too sweet. But thank you.' },
+      { sender: 'Akane', text: 'Eita-san! Look, I gathered 3 more Moonbloom herbs! The slimes couldn\'t stop me this time!' },
+      { sender: 'Takezo', text: 'Hahaha! Well done, Akane-chan! The guild cauldron has plenty of healing potion now!' },
+      { sender: 'Yamada', text: 'Remember to check equipment durability before the Golem raid.' },
+      { sender: 'Akane', text: 'Yamada-kun, your afro is glowing again under the campfire light, haha!' }
+    ];
+
+    const chosen = banters[Math.floor(Math.random() * banters.length)];
+    uiManager.chatMessages.push({
+      sender: chosen.sender,
+      channel: 'guild',
+      text: chosen.text
+    });
+    uiManager.renderChatMessages();
+
+    // Emote on speaking NPC
+    const speaker = this.npcs.find(n => n.name.includes(chosen.sender));
+    if (speaker) {
+      speaker.emote = '💬';
+      speaker.emoteTimer = 2.0;
+    }
+  }
+
   findNearestHostile(x, y, maxRadius) {
     let nearest = null;
     let minD = maxRadius;
@@ -845,7 +901,6 @@ export class NPCManager {
     const expGained = enemy.level * (enemy.isBoss ? 200 : 25);
     const goldGained = enemy.level * (enemy.isBoss ? 150 : 10);
 
-    // Spawn floating EXP / Loot orb
     this.drops.push({
       x: enemy.x,
       y: enemy.y,

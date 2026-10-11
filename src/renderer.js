@@ -1,10 +1,10 @@
 /**
- * Enhanced 2D Canvas Pixel-Art Renderer for Forest of Savior RPG.
- * Features:
- * - Anti-clutter overhead nameplates with automatic Y-separation and crisp typography
- * - Dynamic anime combat animations: runic summoning circles, weapon trail arcs,
- *   knockback effects, squash-and-stretch slimes, floating exp orbs
- * - Camera modes (2.5D Isometric FOS, 90° Top-Down, 60° Action Angle) & smooth zoom
+ * High-Performance 2D Canvas Pixel-Art Renderer for Forest of Savior RPG.
+ * 2026 Engine Enhancements:
+ * - Dynamic atmospheric sunbeams, god-rays & radial lighting
+ * - Runic summoning matrices, celestial falling meteors, crystalline ice spikes
+ * - Fluid monster animations: gelatinous slime cores, predator eye trails, golem energy
+ * - Clean anti-overlapping overhead nameplates & crisp typography
  * 100% pure JavaScript.
  */
 
@@ -63,7 +63,7 @@ export class GameRenderer {
     // Smooth zoom interpolation
     this.camera.zoom += (this.camera.targetZoom - this.camera.zoom) * 0.1;
 
-    // Add screen shake offset if active
+    // Screen shake offset
     this.shakeX = screenShake > 0 ? (Math.random() - 0.5) * screenShake * 2 : 0;
     this.shakeY = screenShake > 0 ? (Math.random() - 0.5) * screenShake * 2 : 0;
   }
@@ -73,7 +73,7 @@ export class GameRenderer {
     ctx.save();
 
     // 1. Clear background
-    ctx.fillStyle = '#0f172a';
+    ctx.fillStyle = '#0b1120';
     ctx.fillRect(0, 0, this.width, this.height);
 
     // 2. Camera Transformations
@@ -84,50 +84,46 @@ export class GameRenderer {
     ctx.scale(this.camera.zoom, this.camera.zoom * this.camera.scaleY);
     ctx.translate(-this.camera.x, -this.camera.y);
 
-    // 3. Draw Terrain & Ground (Grass, Cobblestone Paths, Water)
+    // 3. Terrain & Ground
     this.drawGround(ctx, world);
 
-    // 4. Draw Campfire, Shrines, and Base Decorations
+    // 4. Ground Runic Summon Circles (Rendered flat under characters)
+    this.drawRunicCircles(ctx, particleSystem);
+
+    // 5. Campfire & Base Decorations
     this.drawBaseProps(ctx, world);
 
-    // 5. Draw Gathering Nodes & Chests
+    // 6. Interactive Nodes & Chests
     this.drawInteractiveNodes(ctx, world);
 
-    // 6. Draw Floating EXP & Loot Orbs
+    // 7. Crystalline Ice Spikes (Ground layer)
+    this.drawIceSpikes(ctx, particleSystem);
+
+    // 8. Floating EXP & Loot Orbs
     this.drawDrops(ctx, npcManager);
 
-    // 7. Gather all renderable entities for Y-Sorting (proper depth!)
+    // 9. Y-Sorted Entity Layering (Characters, Monsters, Trees, Props)
     const entities = [];
 
-    // Trees
     for (const tree of world.trees) {
       entities.push({ type: 'tree', y: tree.y + 10, data: tree });
     }
-
-    // World Decorations (lanterns, tables, pillars)
     for (const dec of world.decorations) {
       entities.push({ type: 'decoration', y: dec.y, data: dec });
     }
-
-    // Enemies
     for (const enemy of npcManager.enemies) {
       if (!enemy.dead) {
         entities.push({ type: 'enemy', y: enemy.y, data: enemy });
       }
     }
-
-    // NPCs
     for (const npc of npcManager.npcs) {
       entities.push({ type: 'npc', y: npc.y, data: npc });
     }
-
-    // Player
     entities.push({ type: 'player', y: player.y, data: player });
 
-    // Sort by Y for natural depth layering
+    // Sort by Y for depth layering
     entities.sort((a, b) => a.y - b.y);
 
-    // Render sorted entities
     for (const ent of entities) {
       if (ent.type === 'tree') {
         this.drawTree(ctx, ent.data);
@@ -142,25 +138,28 @@ export class GameRenderer {
       }
     }
 
-    // 8. Spell Particles & Combat Effects
+    // 10. Spell Particles & Projectiles (Falling Meteors, Slashes, Sparks)
+    this.drawFallingMeteors(ctx, particleSystem);
     this.drawParticles(ctx, particleSystem);
 
-    // 9. Sakura Petals Floating Overlay
+    // 11. Drifting Sakura Petals
     this.drawSakuraPetals(ctx, particleSystem);
 
-    // 10. Floating Combat Text
+    // 12. Floating Combat Text
     this.drawCombatText(ctx, combatTextSystem);
 
     ctx.restore();
+
+    // 13. Screen-Space Atmospheric Lighting & God Rays (Post-processing)
+    this.drawAtmosphere(ctx);
   }
 
   drawGround(ctx, world) {
-    // Fill base lush anime green grass
-    ctx.fillStyle = '#22543d';
+    ctx.fillStyle = '#1c4832';
     ctx.fillRect(0, 0, world.width, world.height);
 
-    // Checker pattern subtle grass variance
-    ctx.fillStyle = '#276749';
+    // Subtle checkered grass tiles
+    ctx.fillStyle = '#225b3e';
     for (let x = 0; x < world.width; x += 80) {
       for (let y = 0; y < world.height; y += 80) {
         if ((x + y) % 160 === 0) {
@@ -170,25 +169,25 @@ export class GameRenderer {
     }
 
     // Camp dirt plaza
-    ctx.fillStyle = '#78350f';
+    ctx.fillStyle = '#6d2809';
     ctx.beginPath();
-    ctx.ellipse(1400, 1400, 130, 85, 0, 0, Math.PI * 2);
+    ctx.ellipse(1400, 1400, 135, 88, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Cobblestone Main Plaza rim
-    ctx.fillStyle = '#a0aec0';
+    // Cobblestone Main Plaza
+    ctx.fillStyle = '#94a3b8';
     ctx.beginPath();
     ctx.ellipse(1400, 1400, 110, 70, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Camp inner hearth
-    ctx.fillStyle = '#475569';
+    // Hearth center
+    ctx.fillStyle = '#334155';
     ctx.beginPath();
     ctx.ellipse(1400, 1400, 45, 28, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Stone pathway to ruins (Southeast)
-    ctx.fillStyle = '#718096';
+    // Stone pathway to ruins
+    ctx.fillStyle = '#64748b';
     for (let i = 0; i <= 20; i++) {
       const px = 1400 + (2100 - 1400) * (i / 20);
       const py = 1400 + (2100 - 1400) * (i / 20);
@@ -206,8 +205,8 @@ export class GameRenderer {
       ctx.fill();
     }
 
-    // River flowing in the north
-    ctx.fillStyle = '#38bdf8';
+    // River flowing in north
+    ctx.fillStyle = '#0284c7';
     ctx.beginPath();
     ctx.moveTo(0, 720);
     ctx.bezierCurveTo(700, 780, 1400, 700, 2100, 760);
@@ -219,11 +218,11 @@ export class GameRenderer {
     ctx.fill();
 
     // Animated water shimmer ripples
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
-    for (let i = 0; i < 12; i++) {
-      const rx = (i * 240 + (this.time * 40)) % 2800;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+    for (let i = 0; i < 14; i++) {
+      const rx = (i * 210 + (this.time * 45)) % 2800;
       const ry = 750 + Math.sin(rx * 0.01 + this.time * 2) * 20;
-      ctx.fillRect(rx, ry, 24, 4);
+      ctx.fillRect(rx, ry, 28, 3.5);
     }
 
     // Wooden Bridge at (1400, 740)
@@ -233,25 +232,125 @@ export class GameRenderer {
     for (let b = 715; b < 790; b += 12) {
       ctx.fillRect(1370, b, 60, 2);
     }
-    // Bridge railings
     ctx.fillStyle = '#92400e';
     ctx.fillRect(1368, 710, 4, 85);
     ctx.fillRect(1428, 710, 4, 85);
+  }
+
+  drawRunicCircles(ctx, particleSystem) {
+    for (const rc of particleSystem.runicCircles) {
+      const alpha = Math.max(0, rc.life / rc.maxLife);
+      ctx.save();
+      ctx.translate(rc.x, rc.y);
+      ctx.rotate(rc.rot);
+      ctx.globalAlpha = alpha * 0.85;
+
+      // Outer glowing ring
+      ctx.strokeStyle = rc.color;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, rc.radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Inner concentric ring
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, rc.radius * 0.65, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Arcane star geometry inside
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const ang = (i / 6) * Math.PI * 2;
+        const x1 = Math.cos(ang) * rc.radius * 0.65;
+        const y1 = Math.sin(ang) * rc.radius * 0.65;
+        const x2 = Math.cos(ang + Math.PI * 0.66) * rc.radius * 0.65;
+        const y2 = Math.sin(ang + Math.PI * 0.66) * rc.radius * 0.65;
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+      }
+      ctx.stroke();
+
+      ctx.restore();
+    }
+  }
+
+  drawIceSpikes(ctx, particleSystem) {
+    for (const is of particleSystem.iceSpikes) {
+      const alpha = Math.max(0, is.life / is.maxLife);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(is.x, is.y);
+      ctx.rotate(is.angle);
+
+      // Frost Shadow
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.3)';
+      ctx.beginPath();
+      ctx.ellipse(0, 4, is.width, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Main sharp ice shard
+      ctx.fillStyle = '#38bdf8';
+      ctx.beginPath();
+      ctx.moveTo(0, -is.height);
+      ctx.lineTo(is.width / 2, 0);
+      ctx.lineTo(-is.width / 2, 0);
+      ctx.closePath();
+      ctx.fill();
+
+      // Diamond highlight facet
+      ctx.fillStyle = '#e0f2fe';
+      ctx.beginPath();
+      ctx.moveTo(0, -is.height);
+      ctx.lineTo(is.width / 3, -is.height * 0.2);
+      ctx.lineTo(0, 0);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore();
+    }
+  }
+
+  drawFallingMeteors(ctx, particleSystem) {
+    for (const m of particleSystem.fallingMeteors) {
+      ctx.save();
+      ctx.translate(m.curX, m.curY);
+
+      // Giant glowing meteor body
+      const grad = ctx.createRadialGradient(0, 0, 4, 0, 0, 24);
+      grad.addColorStop(0, '#fef08a');
+      grad.addColorStop(0.3, '#f97316');
+      grad.addColorStop(0.7, '#ef4444');
+      grad.addColorStop(1, 'rgba(129, 140, 248, 0)');
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(0, 0, 24, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Fiery core rock
+      ctx.fillStyle = '#450a0a';
+      ctx.beginPath();
+      ctx.arc(0, 0, 10, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
   }
 
   drawBaseProps(ctx, world) {
     for (const camp of world.campfires) {
       // Warm ground radial glow
       const grad = ctx.createRadialGradient(camp.x, camp.y, 10, camp.x, camp.y, camp.healRadius);
-      grad.addColorStop(0, 'rgba(251, 146, 60, 0.45)');
-      grad.addColorStop(0.5, 'rgba(234, 88, 12, 0.15)');
+      grad.addColorStop(0, 'rgba(251, 146, 60, 0.5)');
+      grad.addColorStop(0.5, 'rgba(234, 88, 12, 0.18)');
       grad.addColorStop(1, 'rgba(234, 88, 12, 0)');
       ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.arc(camp.x, camp.y, camp.healRadius, 0, Math.PI * 2);
       ctx.fill();
 
-      // Fire pit stones
+      // Stones
       ctx.fillStyle = '#475569';
       for (let a = 0; a < 8; a++) {
         const ang = (a / 8) * Math.PI * 2;
@@ -260,30 +359,30 @@ export class GameRenderer {
         ctx.fill();
       }
 
-      // Burning logs
+      // Logs
       ctx.fillStyle = '#78350f';
       ctx.fillRect(camp.x - 14, camp.y - 4, 28, 7);
       ctx.fillRect(camp.x - 4, camp.y - 12, 8, 24);
 
-      // Flickering anime fire flames
-      const flameH = 18 + Math.sin(this.time * 12) * 5;
+      // Flickering anime flames
+      const flameH = 20 + Math.sin(this.time * 12) * 6;
       ctx.fillStyle = '#ef4444';
       ctx.beginPath();
-      ctx.moveTo(camp.x - 10, camp.y);
+      ctx.moveTo(camp.x - 11, camp.y);
       ctx.lineTo(camp.x, camp.y - flameH - 4);
-      ctx.lineTo(camp.x + 10, camp.y);
+      ctx.lineTo(camp.x + 11, camp.y);
       ctx.fill();
 
       ctx.fillStyle = '#f59e0b';
       ctx.beginPath();
-      ctx.moveTo(camp.x - 6, camp.y);
+      ctx.moveTo(camp.x - 7, camp.y);
       ctx.lineTo(camp.x, camp.y - flameH * 0.7);
-      ctx.lineTo(camp.x + 6, camp.y);
+      ctx.lineTo(camp.x + 7, camp.y);
       ctx.fill();
 
       ctx.fillStyle = '#fef08a';
       ctx.beginPath();
-      ctx.arc(camp.x, camp.y - 4, 4, 0, Math.PI * 2);
+      ctx.arc(camp.x, camp.y - 4, 4.5, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -294,7 +393,7 @@ export class GameRenderer {
 
       if (node.type === 'herb') {
         const bob = Math.sin(this.time * 3 + node.x) * 3;
-        ctx.fillStyle = 'rgba(244, 114, 182, 0.35)';
+        ctx.fillStyle = 'rgba(244, 114, 182, 0.4)';
         ctx.beginPath();
         ctx.arc(node.x, node.y, 16, 0, Math.PI * 2);
         ctx.fill();
@@ -319,7 +418,7 @@ export class GameRenderer {
         ctx.fill();
       } else if (node.type === 'crystal') {
         const bob = Math.sin(this.time * 2.5 + node.y) * 2;
-        ctx.fillStyle = 'rgba(56, 189, 248, 0.35)';
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.4)';
         ctx.beginPath();
         ctx.arc(node.x, node.y, 18, 0, Math.PI * 2);
         ctx.fill();
@@ -367,7 +466,6 @@ export class GameRenderer {
   drawDrops(ctx, npcManager) {
     for (const drop of npcManager.drops) {
       const bob = Math.sin(this.time * 8 + drop.x) * 4;
-      // Glowing orb
       ctx.fillStyle = 'rgba(251, 191, 36, 0.4)';
       ctx.beginPath();
       ctx.arc(drop.x, drop.y + bob, 8, 0, Math.PI * 2);
@@ -375,7 +473,7 @@ export class GameRenderer {
 
       ctx.fillStyle = '#fbbf24';
       ctx.beginPath();
-      ctx.arc(drop.x, drop.y + bob, 4, 0, Math.PI * 2);
+      ctx.arc(drop.x, drop.y + bob, 4.5, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.fillStyle = '#ffffff';
@@ -428,9 +526,9 @@ export class GameRenderer {
       ctx.fillStyle = '#fef08a';
       ctx.fillRect(dec.x - 4, dec.y - 14, 8, 8);
 
-      ctx.fillStyle = 'rgba(254, 240, 138, 0.15)';
+      ctx.fillStyle = 'rgba(254, 240, 138, 0.2)';
       ctx.beginPath();
-      ctx.arc(dec.x, dec.y - 10, 32, 0, Math.PI * 2);
+      ctx.arc(dec.x, dec.y - 10, 36, 0, Math.PI * 2);
       ctx.fill();
     } else if (dec.type === 'ruin_pillar') {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
@@ -476,12 +574,17 @@ export class GameRenderer {
     const isHurt = enemy.flashHurt > 0;
 
     if (enemy.type === 'slime') {
-      // Squash & Stretch physics
       const bounce = enemy.bounceOffset || 0;
       const stretch = bounce > 2 ? 0.85 : 1.15;
       ctx.fillStyle = isHurt ? '#ffffff' : '#22c55e';
       ctx.beginPath();
       ctx.ellipse(enemy.x, enemy.y - 4 - bounce, enemy.radius * stretch, enemy.radius * (2 - stretch) * 0.8, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Slime inner gelatinous nucleus core
+      ctx.fillStyle = '#16a34a';
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y - 3 - bounce, 5, 0, Math.PI * 2);
       ctx.fill();
 
       // Eyes
@@ -497,8 +600,12 @@ export class GameRenderer {
       ctx.fillRect(enemy.x - 18, enemy.y - 16, 12, 12);
       ctx.fillRect(enemy.x - 18, enemy.y - 20, 4, 5);
       ctx.fillRect(enemy.x - 10, enemy.y - 20, 4, 5);
+
+      // Predator glowing eyes with trail
       ctx.fillStyle = '#ef4444';
-      ctx.fillRect(enemy.x - 16, enemy.y - 14, 3, 3);
+      ctx.fillRect(enemy.x - 16, enemy.y - 14, 3.5, 3);
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.35)';
+      ctx.fillRect(enemy.x - 12, enemy.y - 14, 5, 3);
     } else if (enemy.type === 'treant') {
       ctx.fillStyle = isHurt ? '#ffffff' : '#3f2e1e';
       ctx.fillRect(enemy.x - 18, enemy.y - 34, 36, 40);
@@ -513,14 +620,19 @@ export class GameRenderer {
       ctx.fillStyle = '#1e293b';
       ctx.fillRect(enemy.x - 46, enemy.y - 64, 22, 26);
       ctx.fillRect(enemy.x + 24, enemy.y - 64, 22, 26);
+
+      // Pulsing purple core
+      const pulse = 10 + Math.sin(this.time * 6) * 2;
       ctx.fillStyle = '#a855f7';
       ctx.beginPath();
-      ctx.arc(enemy.x, enemy.y - 32, 10, 0, Math.PI * 2);
+      ctx.arc(enemy.x, enemy.y - 32, pulse, 0, Math.PI * 2);
       ctx.fill();
+
       ctx.fillStyle = '#f3e8ff';
       ctx.beginPath();
-      ctx.arc(enemy.x, enemy.y - 32, 4, 0, Math.PI * 2);
+      ctx.arc(enemy.x, enemy.y - 32, 4.5, 0, Math.PI * 2);
       ctx.fill();
+
       ctx.fillStyle = '#64748b';
       ctx.fillRect(enemy.x - 24, enemy.y - 74, 10, 16);
       ctx.fillRect(enemy.x + 14, enemy.y - 74, 10, 16);
@@ -537,7 +649,6 @@ export class GameRenderer {
     const hpPct = Math.max(0, enemy.hp / enemy.maxHp);
     ctx.fillRect(enemy.x - barW / 2, barY, barW * hpPct, barH);
 
-    // Enemy Name & Level
     ctx.font = '10px "Plus Jakarta Sans", sans-serif';
     ctx.fillStyle = '#f8fafc';
     ctx.textAlign = 'center';
@@ -565,7 +676,6 @@ export class GameRenderer {
     ctx.fillStyle = isHurt ? '#ffffff' : outfitColor;
     ctx.fillRect(char.x - 8, char.y - 8 + bob, 16, 18);
 
-    // Robe hem / trim
     ctx.fillStyle = '#fbbf24';
     ctx.fillRect(char.x - 8, char.y + 8 + bob, 16, 2);
 
@@ -641,8 +751,11 @@ export class GameRenderer {
       ctx.fillRect(char.x + 8, char.y - 20 + bob, 3, 26);
       ctx.fillStyle = '#38bdf8';
       ctx.beginPath();
-      ctx.arc(char.x + 9, char.y - 22 + bob, 4, 0, Math.PI * 2);
+      ctx.arc(char.x + 9, char.y - 22 + bob, 4.5, 0, Math.PI * 2);
       ctx.fill();
+      // Arcane sparkle
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(char.x + 8, char.y - 23 + bob, 2, 2);
     } else if (weaponType === 'sword') {
       ctx.fillStyle = '#94a3b8';
       ctx.fillRect(char.x + 9, char.y - 14 + bob, 3, 18);
@@ -654,11 +767,10 @@ export class GameRenderer {
       ctx.fillRect(char.x - 10, char.y - 4 + bob, 2, 10);
     }
 
-    // 6. Overhead Nameplates (Optimized to Prevent Text Soups!)
+    // 6. Overhead Nameplates
     const tagY = char.y - (hairStyle === 'afro' ? 44 : 32) + bob;
     ctx.textAlign = 'center';
 
-    // Only render full guild tag for Player (avoids 5 layered <Chocolate Everyday> on screen!)
     if (isPlayer) {
       ctx.font = '9px "Plus Jakarta Sans", sans-serif';
       ctx.fillStyle = '#fde047';
@@ -668,7 +780,6 @@ export class GameRenderer {
       ctx.fillText(`<${char.guild || 'Chocolate Everyday'}>`, char.x, tagY - 14);
     }
 
-    // Crisp high-contrast name and level
     ctx.font = 'bold 11px "Plus Jakarta Sans", sans-serif';
     ctx.strokeStyle = '#0f172a';
     ctx.lineWidth = 3;
@@ -677,7 +788,6 @@ export class GameRenderer {
     ctx.fillStyle = isPlayer ? '#67e8f9' : (char.inParty ? '#4ade80' : '#f8fafc');
     ctx.fillText(nameText, char.x, tagY);
 
-    // Subtle small status/goal ticker if NPC is doing autonomous actions
     if (!isPlayer && char.state) {
       let stateLabel = '';
       if (char.state === 'GATHER_HERBS') stateLabel = '🌸 Harvesting';
@@ -730,13 +840,11 @@ export class GameRenderer {
         ctx.fillStyle = p.color;
         ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
       } else if (p.type === 'meteor_crater') {
-        // Shockwave crater
         ctx.fillStyle = p.color;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
         ctx.fill();
       } else if (p.type === 'slash_arc') {
-        // Gradient weapon slash
         ctx.strokeStyle = p.color;
         ctx.lineWidth = 3.5;
         ctx.beginPath();
@@ -790,5 +898,37 @@ export class GameRenderer {
 
       ctx.restore();
     }
+  }
+
+  // Screen-Space Lighting & Atmosphere (Lush Anime God-Rays & Vignette)
+  drawAtmosphere(ctx) {
+    ctx.save();
+
+    // Subtle sunbeam god-rays streaming diagonally
+    const timeOffset = Math.sin(this.time * 0.5) * 40;
+    ctx.fillStyle = 'rgba(254, 240, 138, 0.035)';
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      const xStart = (i * 350) + timeOffset;
+      ctx.moveTo(xStart, 0);
+      ctx.lineTo(xStart + 160, 0);
+      ctx.lineTo(xStart - 100, this.height);
+      ctx.lineTo(xStart - 260, this.height);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Soft cinematic vignette
+    const vignette = ctx.createRadialGradient(
+      this.width / 2, this.height / 2, this.width * 0.35,
+      this.width / 2, this.height / 2, this.width * 0.75
+    );
+    vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    vignette.addColorStop(1, 'rgba(11, 15, 25, 0.45)');
+
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, this.width, this.height);
+
+    ctx.restore();
   }
 }
