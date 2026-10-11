@@ -354,6 +354,67 @@ class SoundSystem {
     osc.start(t);
     osc.stop(t + 0.1);
   }
+
+  // Dramatic Anime Game-Over / Death Sound
+  playDeath() {
+    if (this.muted) return;
+    this.ensureContext();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    // Low ominous gong and descending minor chord
+    const freqs = [220, 196, 174.61, 146.83];
+    freqs.forEach((freq, idx) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const filter = this.ctx.createBiquadFilter();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, t + idx * 0.18);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.5, t + idx * 0.18 + 0.8);
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(800, t + idx * 0.18);
+      filter.frequency.exponentialRampToValueAtTime(100, t + idx * 0.18 + 0.8);
+
+      gain.gain.setValueAtTime(0.35, t + idx * 0.18);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + idx * 0.18 + 0.9);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.masterGain);
+
+      osc.start(t + idx * 0.18);
+      osc.stop(t + idx * 0.18 + 0.9);
+    });
+  }
+
+  // Heavenly Angelic Revival Fanfare
+  playRevive() {
+    if (this.muted) return;
+    this.ensureContext();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    // Celestial ascending chord sequence (D major 9th to high chime)
+    const notes = [293.66, 369.99, 440, 587.33, 739.99, 880, 1174.66];
+    notes.forEach((freq, idx) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t + idx * 0.08);
+
+      gain.gain.setValueAtTime(0.26, t + idx * 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + idx * 0.08 + 0.6);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+
+      osc.start(t + idx * 0.08);
+      osc.stop(t + idx * 0.08 + 0.6);
+    });
+  }
 }
 
 export const sound = new SoundSystem();

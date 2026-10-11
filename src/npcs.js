@@ -340,6 +340,32 @@ export class NPCManager {
       if (npc.attackCooldown > 0) npc.attackCooldown -= dt;
       if (npc.healCooldown > 0) npc.healCooldown -= dt;
 
+      // Knocked-out recovery & rally timer
+      if (npc.isDead) {
+        npc.rallyTimer = (npc.rallyTimer || 8.0) - dt;
+        if (npc.rallyTimer <= 0) {
+          npc.isDead = false;
+          npc.hp = npc.maxHp;
+          npc.mp = npc.maxMp;
+          npc.x = npc.spawnX;
+          npc.y = npc.spawnY;
+          npc.emote = '✨';
+          npc.emoteTimer = 2.5;
+          sound.playRevive();
+          particleSystem.addRevivePillar(npc.x, npc.y);
+          combatTextSystem.addText(npc.x, npc.y - 30, `${npc.name} Revived!`, '#4ade80', 2.0);
+          if (uiManager) {
+            uiManager.chatMessages.push({
+              sender: npc.name,
+              channel: 'guild',
+              text: 'I have fully recovered by the campfire! Ready for the next adventure!'
+            });
+            uiManager.renderChatMessages();
+          }
+        }
+        continue;
+      }
+
       // Potion usage when critically injured
       if (npc.hp < npc.maxHp * 0.35 && npc.potions > 0 && npc.healCooldown <= 0) {
         npc.potions -= 1;
@@ -366,7 +392,7 @@ export class NPCManager {
       }
     }
 
-    // 2. Update Enemies (Attacking, chasing, patrolling)
+    // 2. Update Enemies (Attacking, chasing, patrolling with smart pathfinding)
     for (const enemy of this.enemies) {
       if (enemy.dead) {
         enemy.respawnTimer -= dt;
@@ -375,6 +401,7 @@ export class NPCManager {
           enemy.hp = enemy.maxHp;
           enemy.x = enemy.spawnX;
           enemy.y = enemy.spawnY;
+          particleSystem.addRevivePillar(enemy.x, enemy.y);
         }
         continue;
       }
@@ -400,14 +427,14 @@ export class NPCManager {
       let minAggroDist = enemy.isBoss ? 350 : 220;
 
       const dPlayer = Math.hypot(player.x - enemy.x, player.y - enemy.y);
-      if (dPlayer <= minAggroDist && player.hp > 0) {
+      if (dPlayer <= minAggroDist && player.hp > 0 && !player.isDead) {
         aggroTarget = player;
         minAggroDist = dPlayer;
       }
 
       for (const npc of this.npcs) {
         const dNpc = Math.hypot(npc.x - enemy.x, npc.y - enemy.y);
-        if (dNpc <= minAggroDist && npc.hp > 0) {
+        if (dNpc <= minAggroDist && npc.hp > 0 && !npc.isDead) {
           aggroTarget = npc;
           minAggroDist = dNpc;
         }
@@ -420,24 +447,26 @@ export class NPCManager {
             enemy.attackCooldown = enemy.isBoss ? 2.2 : 1.2;
             sound.playHit();
             const dmg = Math.max(6, Math.floor(enemy.attackPower - (aggroTarget.defense || 10) * 0.5));
-            aggroTarget.hp = Math.max(0, aggroTarget.hp - dmg);
-            aggroTarget.flashHurt = 0.25;
 
-            combatTextSystem.addText(aggroTarget.x, aggroTarget.y - 25, `-${dmg}`, '#ef4444');
-            particleSystem.addHitSpark(aggroTarget.x, aggroTarget.y);
+            if (aggroTarget === player) {
+              player.takeDamage(dmg, enemy.name, combatTextSystem, particleSystem);
+            } else {
+              aggroTarget.hp = Math.max(0, aggroTarget.hp - dmg);
+              aggroTarget.flashHurt = 0.25;
+              combatTextSystem.addText(aggroTarget.x, aggroTarget.y - 25, `-${dmg}`, '#ef4444');
+              particleSystem.addHitSpark(aggroTarget.x, aggroTarget.y);
+              if (aggroTarget.hp <= 0 && !aggroTarget.isDead) {
+                this.knockoutNPC(aggroTarget, particleSystem, combatTextSystem, uiManager);
+              }
+            }
 
             if (enemy.isBoss) {
               particleSystem.addGroundSlam(enemy.x, enemy.y);
             }
           }
         } else {
-          const angle = Math.atan2(aggroTarget.y - enemy.y, aggroTarget.x - enemy.x);
-          const nextX = enemy.x + Math.cos(angle) * enemy.speed * dt;
-          const nextY = enemy.y + Math.sin(angle) * enemy.speed * dt;
-          if (!this.world.checkCollision(nextX, nextY, enemy.radius)) {
-            enemy.x = nextX;
-            enemy.y = nextY;
-          }
+          // Smart pathfinding chase (whisker steering around trees & obstacles)
+          this.world.navigate(enemy, aggroTarget.x, aggroTarget.y, enemy.speed, dt, enemy.radius, enemy.attackRange * 0.7);
         }
       } else {
         enemy.state = 'patrol';
@@ -450,16 +479,8 @@ export class NPCManager {
           enemy.targetY = enemy.spawnY + Math.sin(angle) * r;
         }
 
-        const dTarget = Math.hypot(enemy.targetX - enemy.x, enemy.targetY - enemy.y);
-        if (dTarget > 6) {
-          const angle = Math.atan2(enemy.targetY - enemy.y, enemy.targetX - enemy.x);
-          const nextX = enemy.x + Math.cos(angle) * (enemy.speed * 0.5) * dt;
-          const nextY = enemy.y + Math.sin(angle) * (enemy.speed * 0.5) * dt;
-          if (!this.world.checkCollision(nextX, nextY, enemy.radius)) {
-            enemy.x = nextX;
-            enemy.y = nextY;
-          }
-        }
+        // Smart pathfinding patrol around trees & borders
+        this.world.navigate(enemy, enemy.targetX, enemy.targetY, enemy.speed * 0.5, dt, enemy.radius, 8);
       }
     }
 
@@ -501,12 +522,7 @@ export class NPCManager {
       if (akane && akane.state === 'FLEE_CAMP' && Math.hypot(akane.x - npc.x, akane.y - npc.y) < 600) {
         // Yamada rushes to rescue Akane!
         npc.state = 'RESCUE_AKANE';
-        const dAkane = Math.hypot(akane.x - npc.x, akane.y - npc.y);
-        if (dAkane > 70) {
-          const angle = Math.atan2(akane.y - npc.y, akane.x - npc.x);
-          npc.x += Math.cos(angle) * (npc.speed * 1.5) * dt;
-          npc.y += Math.sin(angle) * (npc.speed * 1.5) * dt;
-        }
+        this.world.navigate(npc, akane.x, akane.y, npc.speed * 1.5, dt, 14, 65);
 
         // Frost freeze attackers near Akane!
         const threatNearAkane = this.findNearestHostile(akane.x, akane.y, 160);
@@ -534,10 +550,8 @@ export class NPCManager {
         npc.state = 'COMBAT';
         const dist = Math.hypot(nearestMonster.x - npc.x, nearestMonster.y - npc.y);
 
-        if (dist > 160) {
-          const angle = Math.atan2(nearestMonster.y - npc.y, nearestMonster.x - npc.x);
-          npc.x += Math.cos(angle) * npc.speed * dt;
-          npc.y += Math.sin(angle) * npc.speed * dt;
+        if (dist > 150) {
+          this.world.navigate(npc, nearestMonster.x, nearestMonster.y, npc.speed, dt, 14, 140);
         }
 
         if (npc.attackCooldown <= 0) {
@@ -581,23 +595,15 @@ export class NPCManager {
         }
 
         if (npc.targetX) {
-          const d = Math.hypot(npc.targetX - npc.x, npc.targetY - npc.y);
-          if (d > 10) {
-            const angle = Math.atan2(npc.targetY - npc.y, npc.targetX - npc.x);
-            npc.x += Math.cos(angle) * (npc.speed * 0.7) * dt;
-            npc.y += Math.sin(angle) * (npc.speed * 0.7) * dt;
-          }
+          this.world.navigate(npc, npc.targetX, npc.targetY, npc.speed * 0.7, dt, 14, 15);
         }
       }
     } else if (npc.id === 'akane') {
       // AKANE: Gathers Moonbloom herbs & grinds low-level slimes to level up!
       if (npc.hp < npc.maxHp * 0.4) {
         npc.state = 'FLEE_CAMP';
-        const dCamp = Math.hypot(1400 - npc.x, 1400 - npc.y);
-        if (dCamp > 30) {
-          const angle = Math.atan2(1400 - npc.y, 1400 - npc.x);
-          npc.x += Math.cos(angle) * (npc.speed * 1.2) * dt;
-          npc.y += Math.sin(angle) * (npc.speed * 1.2) * dt;
+        const reachedCamp = this.world.navigate(npc, 1400, 1400, npc.speed * 1.2, dt, 14, 30);
+        if (!reachedCamp) {
           if (npc.emote !== '💧') {
             npc.emote = '💧';
             npc.emoteTimer = 2.0;
@@ -623,12 +629,8 @@ export class NPCManager {
 
       if (nearestHerb) {
         npc.state = 'GATHER_HERBS';
-        const d = Math.hypot(nearestHerb.x - npc.x, nearestHerb.y - npc.y);
-        if (d > 25) {
-          const angle = Math.atan2(nearestHerb.y - npc.y, nearestHerb.x - npc.x);
-          npc.x += Math.cos(angle) * npc.speed * dt;
-          npc.y += Math.sin(angle) * npc.speed * dt;
-        } else {
+        const reachedHerb = this.world.navigate(npc, nearestHerb.x, nearestHerb.y, npc.speed, dt, 14, 22);
+        if (reachedHerb) {
           nearestHerb.available = false;
           nearestHerb.respawnTimer = 25;
           npc.herbsCollected += 1;
@@ -643,11 +645,9 @@ export class NPCManager {
         const nearestSlime = this.findNearestHostileByType(npc.x, npc.y, 300, 'slime');
         if (nearestSlime) {
           npc.state = 'FIGHT_SLIMES';
-          const d = Math.hypot(nearestSlime.x - npc.x, nearestSlime.y - npc.y);
-          if (d > 30) {
-            const angle = Math.atan2(nearestSlime.y - npc.y, nearestSlime.x - npc.x);
-            npc.x += Math.cos(angle) * npc.speed * dt;
-            npc.y += Math.sin(angle) * npc.speed * dt;
+          const distToSlime = Math.hypot(nearestSlime.x - npc.x, nearestSlime.y - npc.y);
+          if (distToSlime > 28) {
+            this.world.navigate(npc, nearestSlime.x, nearestSlime.y, npc.speed, dt, 14, 25);
           } else if (npc.attackCooldown <= 0) {
             npc.attackCooldown = 0.8;
             sound.playSlash();
@@ -667,12 +667,7 @@ export class NPCManager {
             npc.targetY = 1200 + (Math.random() - 0.5) * 300;
           }
           if (npc.targetX) {
-            const d = Math.hypot(npc.targetX - npc.x, npc.targetY - npc.y);
-            if (d > 10) {
-              const angle = Math.atan2(npc.targetY - npc.y, npc.targetX - npc.x);
-              npc.x += Math.cos(angle) * (npc.speed * 0.6) * dt;
-              npc.y += Math.sin(angle) * (npc.speed * 0.6) * dt;
-            }
+            this.world.navigate(npc, npc.targetX, npc.targetY, npc.speed * 0.6, dt, 14, 15);
           }
         }
       }
@@ -680,11 +675,9 @@ export class NPCManager {
       const nearestWolf = this.findNearestHostileByType(npc.x, npc.y, 350, 'wolf');
       if (nearestWolf) {
         npc.state = 'HUNT_WOLVES';
-        const d = Math.hypot(nearestWolf.x - npc.x, nearestWolf.y - npc.y);
-        if (d > 120) {
-          const angle = Math.atan2(nearestWolf.y - npc.y, nearestWolf.x - npc.x);
-          npc.x += Math.cos(angle) * npc.speed * dt;
-          npc.y += Math.sin(angle) * npc.speed * dt;
+        const distToWolf = Math.hypot(nearestWolf.x - npc.x, nearestWolf.y - npc.y);
+        if (distToWolf > 110) {
+          this.world.navigate(npc, nearestWolf.x, nearestWolf.y, npc.speed, dt, 14, 105);
         } else if (npc.attackCooldown <= 0) {
           npc.attackCooldown = 1.4;
           sound.playFireball();
@@ -708,22 +701,15 @@ export class NPCManager {
           npc.targetY = dest.y;
         }
         if (npc.targetX) {
-          const d = Math.hypot(npc.targetX - npc.x, npc.targetY - npc.y);
-          if (d > 8) {
-            const angle = Math.atan2(npc.targetY - npc.y, npc.targetX - npc.x);
-            npc.x += Math.cos(angle) * (npc.speed * 0.5) * dt;
-            npc.y += Math.sin(angle) * (npc.speed * 0.5) * dt;
-          }
+          this.world.navigate(npc, npc.targetX, npc.targetY, npc.speed * 0.5, dt, 14, 12);
         }
       }
     } else if (npc.id === 'takezo') {
       const enemyNearCamp = this.findNearestHostile(1400, 1400, 260);
       if (enemyNearCamp) {
-        const d = Math.hypot(enemyNearCamp.x - npc.x, enemyNearCamp.y - npc.y);
-        if (d > 35) {
-          const angle = Math.atan2(enemyNearCamp.y - npc.y, enemyNearCamp.x - npc.x);
-          npc.x += Math.cos(angle) * npc.speed * dt;
-          npc.y += Math.sin(angle) * npc.speed * dt;
+        const distToEnemy = Math.hypot(enemyNearCamp.x - npc.x, enemyNearCamp.y - npc.y);
+        if (distToEnemy > 35) {
+          this.world.navigate(npc, enemyNearCamp.x, enemyNearCamp.y, npc.speed, dt, 14, 30);
         } else if (npc.attackCooldown <= 0) {
           npc.attackCooldown = 1.0;
           sound.playSlash();
@@ -737,31 +723,38 @@ export class NPCManager {
           }
         }
       } else {
-        const dHome = Math.hypot(npc.spawnX - npc.x, npc.spawnY - npc.y);
-        if (dHome > 20) {
-          const angle = Math.atan2(npc.spawnY - npc.y, npc.spawnX - npc.x);
-          npc.x += Math.cos(angle) * (npc.speed * 0.5) * dt;
-          npc.y += Math.sin(angle) * (npc.speed * 0.5) * dt;
-        }
+        this.world.navigate(npc, npc.spawnX, npc.spawnY, npc.speed * 0.5, dt, 14, 15);
       }
+    }
+  }
+
+  // Knockout NPC and begin recovery timer
+  knockoutNPC(npc, particleSystem, combatTextSystem, uiManager) {
+    if (npc.isDead) return;
+    npc.isDead = true;
+    npc.hp = 0;
+    npc.rallyTimer = 8.0;
+    npc.emote = '💤';
+    npc.emoteTimer = 8.0;
+    if (combatTextSystem) {
+      combatTextSystem.addText(npc.x, npc.y - 30, `${npc.name} Knocked Out!`, '#f43f5e', 2.5);
+    }
+    if (uiManager) {
+      uiManager.chatMessages.push({
+        sender: npc.name,
+        channel: 'guild',
+        text: 'Wah! I was overwhelmed! Falling back to camp to recover!'
+      });
+      uiManager.renderChatMessages();
     }
   }
 
   // --- PARTY MEMBER AI (FOLLOWS AND ASSISTS PLAYER) ---
   updatePartyMemberAI(npc, dt, player, particleSystem, combatTextSystem) {
-    const dx = player.x - npc.x;
-    const dy = player.y - npc.y;
-    const dist = Math.hypot(dx, dy);
+    const dist = Math.hypot(player.x - npc.x, player.y - npc.y);
 
-    if (dist > 85) {
-      const moveAngle = Math.atan2(dy, dx);
-      const moveDist = npc.speed * dt;
-      const nextX = npc.x + Math.cos(moveAngle) * moveDist;
-      const nextY = npc.y + Math.sin(moveAngle) * moveDist;
-      if (!this.world.checkCollision(nextX, nextY, 14)) {
-        npc.x = nextX;
-        npc.y = nextY;
-      }
+    if (dist > 75) {
+      this.world.navigate(npc, player.x, player.y, npc.speed, dt, 14, 70);
     }
 
     if (npc.id === 'yamada') {

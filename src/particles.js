@@ -419,6 +419,60 @@ export class ParticleSystem {
       });
     }
   }
+
+  // Heavenly Resurrection Light Pillar & Sacred Angelic Particles
+  addRevivePillar(x, y) {
+    this.addScreenShake(4, x, y, this.playerRef, 400);
+
+    // Expanding golden holy shockwave ring
+    for (let i = 0; i < 32; i++) {
+      const angle = (i / 32) * Math.PI * 2;
+      this.particles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * 140,
+        vy: Math.sin(angle) * 140,
+        size: 4 + Math.random() * 3,
+        color: i % 2 === 0 ? '#fbbf24' : '#fef08a',
+        life: 0.6,
+        maxLife: 0.6,
+        type: 'spark'
+      });
+    }
+
+    // Soaring vertical light sparkles & golden angel feathers
+    for (let i = 0; i < 28; i++) {
+      this.particles.push({
+        x: x + (Math.random() - 0.5) * 40,
+        y: y + 10 - Math.random() * 20,
+        vx: (Math.random() - 0.5) * 25,
+        vy: -90 - Math.random() * 80, // shoot upwards like a pillar of light
+        size: 3 + Math.random() * 5,
+        color: Math.random() < 0.4 ? '#ffffff' : (Math.random() < 0.7 ? '#fbbf24' : '#38bdf8'),
+        life: 0.8 + Math.random() * 0.4,
+        maxLife: 1.2,
+        type: 'spark'
+      });
+    }
+  }
+
+  addHolyShockwave(x, y) {
+    this.addScreenShake(5, x, y, this.playerRef, 400);
+    for (let i = 0; i < 24; i++) {
+      const angle = (i / 24) * Math.PI * 2;
+      this.particles.push({
+        x: x + Math.cos(angle) * 10,
+        y: y + Math.sin(angle) * 10,
+        vx: Math.cos(angle) * 180,
+        vy: Math.sin(angle) * 180,
+        size: 3 + Math.random() * 4,
+        color: '#fbbf24',
+        life: 0.45,
+        maxLife: 0.45,
+        type: 'spark'
+      });
+    }
+  }
 }
 
 export class CombatTextSystem {

@@ -895,7 +895,18 @@ export class GameRenderer {
     if (!char) return;
     const custom = isPlayer ? (char.custom || {}) : char;
     const isHurt = char.flashHurt > 0;
+    const isFallen = char.isDead;
     const bob = (char.isSprinting || Math.hypot(char.vx || 0, char.vy || 0) > 10) ? Math.sin(this.time * 14) * 2 : 0;
+
+    ctx.save();
+    if (isFallen) {
+      ctx.globalAlpha = 0.6;
+      // Ethereal soul ring
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.2)';
+      ctx.beginPath();
+      ctx.arc(char.x, char.y, 22 + Math.sin(this.time * 4) * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // Drop Shadow
     ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
@@ -1038,6 +1049,50 @@ export class GameRenderer {
     if (char.emote) {
       this.drawVectorEmoteBubble(ctx, char.x, tagY - 26, char.emote);
     }
+
+    // 8. Divine Aegis Invulnerability Barrier (Golden Runic Dome)
+    if (char.invulnerableTimer > 0) {
+      const shieldRadius = 26 + Math.sin(this.time * 6) * 2;
+
+      // Golden floor rune circle
+      ctx.strokeStyle = 'rgba(251, 191, 36, 0.75)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(char.x, char.y + 10, 22, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Rotating sacred runic points
+      for (let r = 0; r < 6; r++) {
+        const ang = this.time * 1.6 + (r / 6) * Math.PI * 2;
+        ctx.fillStyle = '#fde047';
+        ctx.beginPath();
+        ctx.arc(char.x + Math.cos(ang) * 22, char.y + 10 + Math.sin(ang) * 9, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Luminous barrier dome
+      const grad = ctx.createRadialGradient(char.x, char.y - 4, 6, char.x, char.y - 4, shieldRadius);
+      grad.addColorStop(0, 'rgba(254, 240, 138, 0.05)');
+      grad.addColorStop(0.7, 'rgba(251, 191, 36, 0.22)');
+      grad.addColorStop(1, 'rgba(251, 191, 36, 0.85)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(char.x, char.y - 4, shieldRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#fde047';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Shield overhead badge
+      ctx.font = 'bold 9px "Plus Jakarta Sans", sans-serif';
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 2.5;
+      ctx.strokeText(`DIVINE AEGIS (${char.invulnerableTimer.toFixed(1)}s)`, char.x, tagY - 26);
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillText(`DIVINE AEGIS (${char.invulnerableTimer.toFixed(1)}s)`, char.x, tagY - 26);
+    }
+
+    ctx.restore();
   }
 
   /**

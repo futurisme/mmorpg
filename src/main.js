@@ -123,7 +123,7 @@ class GameEngine {
       } else if (e.code === 'Escape') {
         if (this.player.aimingSkill) {
           this.player.cancelAiming();
-        } else {
+        } else if (this.ui.activeModal !== 'respawn') {
           this.ui.closeModal();
         }
       } else if (e.code === 'Enter') {

@@ -1,9 +1,10 @@
 /**
  * Player Entity & State Management for Forest of Savior RPG.
  * Responsive keyboard controls, stats, skills, inventory, leveling.
- * Enhanced Combat 2026:
+ * Enhanced Combat & Life-Cycle 2026:
  * - Smart Auto-Aim on Basic Slash (rotates directly toward nearest enemy, guaranteed hit)
  * - Skill Targeting Reticle & Aiming System (Aim with mouse/keys, snap to enemies, directional casting)
+ * - Complete Defeat & Respawn System (isDead state, divine protection shield, camp/field recovery)
  * 100% pure JavaScript.
  */
 
@@ -29,6 +30,11 @@ export class Player {
     this.sprintSpeed = 260;
     this.speed = this.baseSpeed;
     this.isSprinting = false;
+
+    // Life-Cycle & Survival
+    this.isDead = false;
+    this.killedBy = 'Wild Monsters';
+    this.invulnerableTimer = 0; // Divine shield protection on revive
 
     // Customization
     this.custom = {
@@ -124,8 +130,60 @@ export class Player {
     this.emoteTimer = 0;
   }
 
+  takeDamage(amount, sourceName = 'Monsters', combatTextSystem, particleSystem) {
+    if (this.isDead || this.invulnerableTimer > 0) return false;
+
+    this.hp = Math.max(0, this.hp - amount);
+    this.flashHurt = 0.25;
+
+    if (combatTextSystem) {
+      combatTextSystem.addText(this.x, this.y - 25, `-${amount}`, '#ef4444');
+    }
+    if (particleSystem) {
+      particleSystem.addHitSpark(this.x, this.y);
+    }
+
+    if (this.hp <= 0 && !this.isDead) {
+      this.isDead = true;
+      this.killedBy = sourceName;
+      sound.playCritical();
+      if (combatTextSystem) {
+        combatTextSystem.addText(this.x, this.y - 45, 'FALLEN IN BATTLE', '#f43f5e', 2.5);
+      }
+      this.emote = '💤';
+      this.emoteTimer = 999;
+      return true;
+    }
+    return false;
+  }
+
+  respawn(x = 1380, y = 1420, hpPct = 1.0, mpPct = 1.0) {
+    this.isDead = false;
+    this.x = x;
+    this.y = y;
+    this.hp = Math.max(50, Math.floor(this.maxHp * hpPct));
+    this.mp = Math.max(30, Math.floor(this.maxMp * mpPct));
+    this.stamina = this.maxStamina;
+    this.invulnerableTimer = 5.0; // 5.0s divine protection barrier
+    this.killedBy = null;
+    this.flashHurt = 0;
+    this.emote = '✨';
+    this.emoteTimer = 2.0;
+  }
+
   update(dt, input, world, particleSystem, combatTextSystem, npcManager) {
-    // 1. Cooldown updates
+    // 0. Invulnerability timer decay
+    if (this.invulnerableTimer > 0) {
+      this.invulnerableTimer = Math.max(0, this.invulnerableTimer - dt);
+    }
+
+    // 1. If Dead, halt normal inputs and actions
+    if (this.isDead) {
+      if (this.flashHurt > 0) this.flashHurt -= dt;
+      return;
+    }
+
+    // Cooldown updates
     if (this.attackCooldown > 0) this.attackCooldown -= dt;
     if (this.attackSwingTimer > 0) this.attackSwingTimer -= dt;
     if (this.flashHurt > 0) this.flashHurt -= dt;
@@ -155,8 +213,8 @@ export class Player {
     for (const c of world.campfires) {
       if (Math.hypot(this.x - c.x, this.y - c.y) < c.healRadius) {
         nearCampfire = true;
-        this.hp = Math.min(this.maxHp, this.hp + 25 * dt);
-        this.mp = Math.min(this.maxMp, this.mp + 20 * dt);
+        this.hp = Math.min(this.maxHp, this.hp + 35 * dt);
+        this.mp = Math.min(this.maxMp, this.mp + 25 * dt);
         break;
       }
     }
@@ -165,7 +223,7 @@ export class Player {
       this.mp = Math.min(this.maxMp, this.mp + 4 * dt);
     }
 
-    // 3. Responsive Movement
+    // 3. Responsive Movement & Wall Sliding
     let dx = 0;
     let dy = 0;
 
@@ -193,16 +251,22 @@ export class Player {
         }
       }
 
-      // Try moving on X
+      // Smooth slide along obstacles: Try full vector first
       const nextX = this.x + dx * this.speed * dt;
-      if (!world.checkCollision(nextX, this.y, this.radius)) {
-        this.x = nextX;
-      }
-
-      // Try moving on Y
       const nextY = this.y + dy * this.speed * dt;
-      if (!world.checkCollision(this.x, nextY, this.radius)) {
+
+      if (!world.checkCollision(nextX, nextY, this.radius)) {
+        this.x = nextX;
         this.y = nextY;
+      } else {
+        // Slide along X if open
+        if (!world.checkCollision(nextX, this.y, this.radius)) {
+          this.x = nextX;
+        }
+        // Slide along Y if open
+        if (!world.checkCollision(this.x, nextY, this.radius)) {
+          this.y = nextY;
+        }
       }
 
       // Sprint motion particles
@@ -231,6 +295,7 @@ export class Player {
    * Find nearest living enemy within a specific radius
    */
   findNearestEnemy(npcManager, maxRadius = 240) {
+    if (!npcManager || !npcManager.enemies) return null;
     let nearest = null;
     let minDist = maxRadius;
 
@@ -249,6 +314,8 @@ export class Player {
    * Basic Attack with Auto-Aim & Guaranteed Hit
    */
   performBasicAttack(world, particleSystem, combatTextSystem, npcManager) {
+    if (this.isDead) return;
+
     this.attackCooldown = 0.28;
     this.attackSwingTimer = 0.22;
     sound.playSlash();
@@ -272,7 +339,7 @@ export class Player {
         this.facing = Math.sin(attackAngle) > 0 ? 'down' : 'up';
       }
 
-      // Responsive combat micro-lunge towards enemy if distance is between 35 and 150px
+      // Responsive combat micro-lunge towards enemy if distance is between 35 and 160px
       const dist = Math.hypot(targetEnemy.x - this.x, targetEnemy.y - this.y);
       if (dist > 35 && dist < 160) {
         const lungeDist = Math.min(26, dist - 25);
@@ -284,7 +351,7 @@ export class Player {
         }
       }
 
-      // Hitbox is directly centered between player and enemy (guaranteed reach)
+      // Hitbox is directly centered at the target enemy (guaranteed reach)
       hx = targetEnemy.x;
       hy = targetEnemy.y;
     } else {
@@ -302,7 +369,7 @@ export class Player {
 
     // Damage enemies in reach (if locked enemy exists, guaranteed hit!)
     let hitCount = 0;
-    for (const enemy of npcManager.enemies) {
+    for (const enemy of (npcManager?.enemies || [])) {
       if (enemy.dead) continue;
 
       const dToHitbox = Math.hypot(enemy.x - hx, enemy.y - hy);
@@ -336,6 +403,8 @@ export class Player {
    * Initiate Skill Aiming Mode
    */
   startAimingSkill(skillNumber, npcManager) {
+    if (this.isDead) return false;
+
     const skill = this.skills.find(s => s.id === skillNumber);
     if (!skill) return false;
 
@@ -385,7 +454,7 @@ export class Player {
    * Update aiming reticle based on mouse coordinates in world space
    */
   updateSkillAim(mouseWorld, npcManager) {
-    if (!this.aimingSkill) return;
+    if (!this.aimingSkill || this.isDead) return;
 
     let targetX = mouseWorld.x;
     let targetY = mouseWorld.y;
@@ -393,7 +462,7 @@ export class Player {
     // Check magnetic auto-snap to nearby enemy within 80px
     let snapped = null;
     let minDist = 80;
-    for (const enemy of npcManager.enemies) {
+    for (const enemy of (npcManager?.enemies || [])) {
       if (enemy.dead) continue;
       const d = Math.hypot(enemy.x - targetX, enemy.y - targetY);
       if (d < minDist) {
@@ -435,7 +504,7 @@ export class Player {
    * Cast the currently aimed skill
    */
   castAimingSkill(world, particleSystem, combatTextSystem, npcManager) {
-    if (!this.aimingSkill) return false;
+    if (!this.aimingSkill || this.isDead) return false;
 
     const skill = this.aimingSkill;
     const tx = this.aimX;
@@ -450,6 +519,8 @@ export class Player {
    * Direct Skill Invocation or Trigger Aiming Mode
    */
   useSkill(skillNumber, world, particleSystem, combatTextSystem, npcManager) {
+    if (this.isDead) return false;
+
     const skill = this.skills.find(s => s.id === skillNumber);
     if (!skill) return false;
 
@@ -484,7 +555,7 @@ export class Player {
    */
   executeSkill(skillNumber, tx, ty, world, particleSystem, combatTextSystem, npcManager) {
     const skill = this.skills.find(s => s.id === skillNumber);
-    if (!skill) return false;
+    if (!skill || this.isDead) return false;
 
     // Deduct MP and apply cooldown
     this.mp -= skill.mpCost;
@@ -495,7 +566,7 @@ export class Player {
       sound.playFireball();
       particleSystem.addFireRing(tx, ty);
 
-      for (const enemy of npcManager.enemies) {
+      for (const enemy of (npcManager?.enemies || [])) {
         if (!enemy.dead && Math.hypot(enemy.x - tx, enemy.y - ty) < 130) {
           const dmg = Math.floor(this.magicPower * 1.55);
           enemy.hp -= dmg;
@@ -510,7 +581,7 @@ export class Player {
       sound.playFrost();
       particleSystem.addIceNova(tx, ty);
 
-      for (const enemy of npcManager.enemies) {
+      for (const enemy of (npcManager?.enemies || [])) {
         if (!enemy.dead && Math.hypot(enemy.x - tx, enemy.y - ty) < 180) {
           const dmg = Math.floor(this.magicPower * 2.3);
           enemy.hp -= dmg;
@@ -525,7 +596,7 @@ export class Player {
       particleSystem.addMeteor(tx, ty);
 
       setTimeout(() => {
-        for (const enemy of npcManager.enemies) {
+        for (const enemy of (npcManager?.enemies || [])) {
           if (!enemy.dead && Math.hypot(enemy.x - tx, enemy.y - ty) < 220) {
             const dmg = 999;
             enemy.hp -= dmg;
@@ -588,6 +659,7 @@ export class Player {
   }
 
   useItem(itemIndex, combatTextSystem) {
+    if (this.isDead) return;
     const item = this.inventory[itemIndex];
     if (!item) return;
 

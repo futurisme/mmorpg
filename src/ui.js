@@ -526,6 +526,15 @@ export class UIManager {
       }
     }
 
+    // Respawn / Fallen Screen Watchdog
+    if (this.player.isDead) {
+      if (this.activeModal !== 'respawn') {
+        this.openRespawnModal(this.player.killedBy || 'Wild Forest Monsters');
+      }
+    } else if (this.activeModal === 'respawn') {
+      this.closeModal();
+    }
+
     this.updatePartyHUD();
     this.drawMinimap();
   }
@@ -786,6 +795,14 @@ export class UIManager {
   // --- MODALS ---
 
   closeModal() {
+    if (this.activeModal === 'respawn' && this.player.isDead) {
+      // Must choose a revival option or wait for auto-revive timer
+      return;
+    }
+    if (this.respawnTimerInterval) {
+      clearInterval(this.respawnTimerInterval);
+      this.respawnTimerInterval = null;
+    }
     this.activeModal = null;
     const overlay = document.getElementById('modal-overlay');
     if (overlay) overlay.classList.add('hidden');
@@ -1369,5 +1386,191 @@ export class UIManager {
       npc.dialogueIndex = 1;
       this.openDialogueModal(npc);
     }
+  }
+
+  // --- ANIME FALLEN / RESPAWN SCREEN MODAL ---
+  openRespawnModal(killerName = 'Forest Monsters') {
+    if (this.activeModal === 'respawn') return;
+    this.activeModal = 'respawn';
+    const overlay = document.getElementById('modal-overlay');
+    const content = document.getElementById('modal-content');
+    if (!overlay || !content) return;
+
+    sound.playDeath();
+    overlay.classList.remove('hidden');
+
+    let countdown = 15;
+    if (this.respawnTimerInterval) {
+      clearInterval(this.respawnTimerInterval);
+    }
+
+    const renderRespawn = () => {
+      content.innerHTML = `
+        <div class="flex flex-col gap-4 text-center select-none">
+          <!-- Anime Fallen Banner -->
+          <div class="relative py-2 border-b border-rose-500/40">
+            <span class="text-[10px] font-mono tracking-widest text-rose-400 uppercase">「 敗 北 ・ 魂 の 彷 徨 」</span>
+            <h2 class="text-xl font-black text-rose-500 tracking-wider mt-1 drop-shadow-[0_0_12px_rgba(244,63,94,0.6)]">
+              YOU HAVE FALLEN IN BATTLE
+            </h2>
+            <p class="text-xs text-slate-300 mt-1">
+              Felled by <span class="text-rose-400 font-bold">${killerName}</span> in <span class="text-amber-300 font-semibold">${this.world.getCurrentZone(this.player.x, this.player.y)}</span>
+            </p>
+          </div>
+
+          <!-- Hero Info Card -->
+          <div class="bg-slate-900/90 rounded-xl p-3 border border-slate-700/80 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-11 h-11 rounded-full bg-slate-800 border-2 border-rose-500/80 flex items-center justify-center text-slate-400 relative">
+                <span class="text-rose-400">${getIcon('wizard', 20)}</span>
+                <span class="absolute -bottom-1 -right-1 text-xs">💤</span>
+              </div>
+              <div class="text-left">
+                <div class="font-bold text-sm text-white">${this.player.name || 'Traveler'} (Lv.${this.player.level})</div>
+                <div class="text-[10px] text-amber-300">&lt;Chocolate Everyday&gt;</div>
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="text-[10px] text-slate-400 font-mono">Protected Gold</div>
+              <div class="text-xs font-bold text-amber-400 flex items-center justify-end gap-1">
+                ${getIcon('gold', 13)} ${this.player.gold} Gold
+              </div>
+            </div>
+          </div>
+
+          <!-- Revival Choices -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
+            <!-- Option 1: Sanctuary Campfire -->
+            <div class="rpg-panel rounded-xl p-3 border border-amber-500/40 bg-gradient-to-b from-amber-950/30 to-slate-900/90 flex flex-col justify-between hover:border-amber-400 transition-all">
+              <div>
+                <div class="flex items-center gap-2 text-amber-300 font-bold text-xs mb-1">
+                  <span>${getIcon('bonfire', 15)}</span>
+                  <span>Guild Sanctuary Campfire</span>
+                </div>
+                <p class="text-[11px] text-slate-300 leading-relaxed">
+                  Safely return to Chocolate Everyday campsite with full HP & MP and 5s Divine Aegis invulnerability.
+                </p>
+              </div>
+              <button id="respawn-camp-btn" class="mt-3 w-full py-2 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+                <span>Revive at Sanctuary (Free)</span>
+              </button>
+            </div>
+
+            <!-- Option 2: Resurrect on Spot -->
+            <div class="rpg-panel rounded-xl p-3 border border-sky-500/40 bg-gradient-to-b from-sky-950/30 to-slate-900/90 flex flex-col justify-between hover:border-sky-400 transition-all">
+              <div>
+                <div class="flex items-center gap-2 text-sky-300 font-bold text-xs mb-1">
+                  <span>${getIcon('sparkle', 15)}</span>
+                  <span>Resurrect on Current Spot</span>
+                </div>
+                <p class="text-[11px] text-slate-300 leading-relaxed">
+                  Channel Goddess Blessing to rise on the spot, triggering a holy monster knockback wave and 5s Divine Aegis.
+                </p>
+              </div>
+              <button id="respawn-spot-btn" class="mt-3 w-full py-2 px-3 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs shadow-lg shadow-sky-500/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+                <span>Resurrect Here Now</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Auto Respawn Timer -->
+          <div class="text-[11px] text-slate-400 font-mono flex items-center justify-center gap-1">
+            <span>Auto-reviving at Sanctuary in:</span>
+            <span id="respawn-countdown-val" class="font-bold text-amber-400 text-xs">${countdown}s</span>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('respawn-camp-btn')?.addEventListener('click', () => {
+        this.executePlayerRespawn(1400, 1400, 'sanctuary');
+      });
+
+      document.getElementById('respawn-spot-btn')?.addEventListener('click', () => {
+        this.executePlayerRespawn(this.player.x, this.player.y, 'spot');
+      });
+    };
+
+    renderRespawn();
+
+    this.respawnTimerInterval = setInterval(() => {
+      countdown--;
+      const timerVal = document.getElementById('respawn-countdown-val');
+      if (timerVal) timerVal.textContent = `${countdown}s`;
+
+      if (countdown <= 0) {
+        clearInterval(this.respawnTimerInterval);
+        this.respawnTimerInterval = null;
+        this.executePlayerRespawn(1400, 1400, 'sanctuary');
+      }
+    }, 1000);
+  }
+
+  executePlayerRespawn(targetX, targetY, mode = 'sanctuary') {
+    if (this.respawnTimerInterval) {
+      clearInterval(this.respawnTimerInterval);
+      this.respawnTimerInterval = null;
+    }
+
+    this.activeModal = null;
+    const overlay = document.getElementById('modal-overlay');
+    if (overlay) overlay.classList.add('hidden');
+
+    this.player.respawn(targetX, targetY, 1.0, 1.0);
+    sound.playRevive();
+    this.particleSystem.addRevivePillar(targetX, targetY);
+
+    if (mode === 'spot') {
+      // Holy shockwave knockback pushing monsters away
+      this.particleSystem.addHolyShockwave(targetX, targetY);
+      for (const enemy of this.npcManager.enemies) {
+        if (!enemy.dead) {
+          const d = Math.hypot(enemy.x - targetX, enemy.y - targetY);
+          if (d < 200) {
+            const ang = Math.atan2(enemy.y - targetY, enemy.x - targetX);
+            enemy.knockbackX = Math.cos(ang) * 450;
+            enemy.knockbackY = Math.sin(ang) * 450;
+            enemy.flashHurt = 0.3;
+          }
+        }
+      }
+    }
+
+    this.combatTextSystem.addText(targetX, targetY - 40, 'DIVINE AEGIS ACTIVE (5s)', '#fbbf24', 2.5);
+
+    this.chatMessages.push({
+      sender: 'System',
+      channel: 'system',
+      text: mode === 'sanctuary'
+        ? 'Restored at Guild Sanctuary! Divine Aegis grants 5 seconds of total immunity.'
+        : 'Resurrected via Divine Blessing! Surrounding enemies pushed back.'
+    });
+
+    // Companion Banter Reaction
+    const yamada = this.npcManager.npcs.find(n => n.id === 'yamada');
+    const akane = this.npcManager.npcs.find(n => n.id === 'akane');
+    setTimeout(() => {
+      if (akane) {
+        akane.emote = '🌸';
+        akane.emoteTimer = 2.0;
+        this.chatMessages.push({
+          sender: 'Akane',
+          channel: 'guild',
+          text: 'Yokatta! You made it back safely! Let\'s stay close together!'
+        });
+      }
+      if (yamada && Math.random() < 0.6) {
+        yamada.emote = '✨';
+        yamada.emoteTimer = 2.0;
+        this.chatMessages.push({
+          sender: 'Yamada',
+          channel: 'party',
+          text: '...Stay behind my frost barrier. Don\'t pull aggro carelessly.'
+        });
+      }
+      this.renderChatMessages();
+    }, 800);
+
+    this.renderChatMessages();
+    this.updateHUD();
   }
 }
