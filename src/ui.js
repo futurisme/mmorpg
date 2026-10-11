@@ -1,10 +1,13 @@
 /**
  * Collapsible, Ultra-Responsive MMORPG HUD & Modals for Forest of Savior.
  * Highly space-efficient, zero screen obstruction, glassmorphic styling.
+ * 100% Vector Game Icons from official SVG library (Zero raw OS emojis).
+ * Skill Aiming & Trajectory HUD integration.
  * 100% pure JavaScript.
  */
 
 import { sound } from './sound.js';
+import { getIcon, EMOTE_ICON_MAP } from './icons.js';
 
 export class UIManager {
   constructor(container, player, world, npcManager, renderer, particleSystem, combatTextSystem) {
@@ -23,7 +26,7 @@ export class UIManager {
     this.chatCollapsed = false;
 
     // Active UI states
-    this.activeModal = null; // 'customizer', 'inventory', 'quests', 'worldmap', 'dialogue'
+    this.activeModal = null; // 'customizer', 'inventory', 'quests', 'worldmap', 'dialogue', 'emotes'
     this.dialogueData = null;
     this.chatMessages = [
       { sender: 'System', channel: 'system', text: 'Welcome to Forest of Savior (FOS) v2026. Enjoy your adventure!' },
@@ -48,7 +51,7 @@ export class UIManager {
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2 min-w-0">
               <div id="player-avatar-preview" class="relative w-9 h-9 rounded-full bg-slate-800 border-2 border-amber-400/90 overflow-hidden shrink-0 flex items-center justify-center cursor-pointer shadow-inner hover:scale-105 transition-transform" title="Click to Customize Character [C]">
-                <span class="text-base" id="hud-avatar-icon">🧙</span>
+                <div id="hud-avatar-icon" class="text-sky-400">${getIcon('wizard', 18)}</div>
                 <div id="hud-level-badge" class="absolute -bottom-0.5 -right-0.5 bg-amber-500 text-slate-950 text-[9px] font-black px-1 py-0.2 rounded-full">Lv.1</div>
               </div>
               <div class="min-w-0">
@@ -121,17 +124,28 @@ export class UIManager {
             <div class="flex items-center gap-1">
               <button id="zoom-out-btn" class="w-5 h-5 rounded bg-slate-800 text-slate-200 text-xs font-bold border border-slate-700 hover:bg-slate-700">-</button>
               <button id="zoom-in-btn" class="w-5 h-5 rounded bg-slate-800 text-slate-200 text-xs font-bold border border-slate-700 hover:bg-slate-700">+</button>
-              <button id="audio-toggle-btn" class="w-5 h-5 rounded bg-slate-800 text-amber-300 text-[11px] font-bold border border-slate-700 hover:bg-slate-700" title="Toggle Sound">🔊</button>
+              <button id="audio-toggle-btn" class="w-5 h-5 rounded bg-slate-800 text-amber-300 text-[11px] font-bold border border-slate-700 hover:bg-slate-700 flex items-center justify-center" title="Toggle Sound">
+                ${getIcon('soundOn', 13, 'text-amber-400')}
+              </button>
             </div>
           </div>
         </div>
       </div>
 
       <!-- Interaction Prompt (Center Bottom - Doesn't overlap hotbar) -->
-      <div id="interact-prompt" class="pointer-events-none absolute bottom-24 left-1/2 -translate-x-1/2 z-20 hidden">
+      <div id="interact-prompt" class="pointer-events-none absolute bottom-28 left-1/2 -translate-x-1/2 z-20 hidden">
         <div class="rpg-panel rpg-panel-gold rounded-full px-4 py-1.5 flex items-center gap-2 shadow-2xl animate-bounce">
           <span class="w-5 h-5 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center">F</span>
           <span id="interact-text" class="text-xs font-bold text-amber-100">Talk to Yamada</span>
+        </div>
+      </div>
+
+      <!-- Skill Aiming Active Notification Banner -->
+      <div id="aim-prompt" class="pointer-events-none absolute bottom-24 left-1/2 -translate-x-1/2 z-20 hidden">
+        <div class="bg-slate-950/90 border border-amber-400/80 rounded-full px-4 py-1.5 flex items-center gap-2 shadow-2xl backdrop-blur-md animate-pulse">
+          <span class="text-amber-400">${getIcon('target', 16)}</span>
+          <span id="aim-prompt-text" class="text-xs font-bold text-amber-200 tracking-wide">AIMING SKILL</span>
+          <span class="text-[10px] text-slate-300 bg-slate-800 px-2 py-0.5 rounded-full border border-slate-700 font-mono">[Left Click] Cast · [Esc] Cancel</span>
         </div>
       </div>
 
@@ -139,48 +153,48 @@ export class UIManager {
       <div class="pointer-events-auto absolute bottom-2.5 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 z-20">
         <!-- Hotbar Slots -->
         <div class="rpg-panel rounded-2xl p-1.5 px-2.5 flex items-center gap-1.5 shadow-2xl border border-slate-700/60 backdrop-blur-md">
-          <!-- Space: Basic Slash -->
-          <div class="relative w-11 h-11 rounded-xl bg-slate-900 border border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:border-amber-400 transition-all group" id="slot-space">
-            <span class="text-lg">⚔️</span>
+          <!-- Space: Basic Slash (with Auto-Aim) -->
+          <div class="relative w-11 h-11 rounded-xl bg-slate-900 border border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:border-amber-400 transition-all group" id="slot-space" title="Auto-Aim Slash [Spacebar]">
+            <div class="text-amber-400">${getIcon('slash', 20)}</div>
             <span class="absolute -top-1.5 left-0.5 bg-slate-800 text-slate-300 text-[8px] font-bold px-1 rounded border border-slate-600">SPC</span>
             <span class="absolute bottom-0 text-[7px] text-slate-400 font-semibold group-hover:text-amber-300">Slash</span>
           </div>
 
           <!-- 1: Fire Spiral -->
-          <div class="relative w-11 h-11 rounded-xl bg-slate-900 border border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:border-amber-400 transition-all group overflow-hidden" id="slot-1">
-            <span class="text-lg">🔥</span>
+          <div class="relative w-11 h-11 rounded-xl bg-slate-900 border border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:border-amber-400 transition-all group overflow-hidden" id="slot-1" title="Fire Spiral [1]">
+            <div class="text-orange-400">${getIcon('fire', 20)}</div>
             <span class="absolute -top-1.5 left-0.5 bg-slate-800 text-amber-300 text-[8px] font-bold px-1 rounded border border-slate-600">1</span>
             <span class="absolute bottom-0 text-[7px] text-slate-400 font-semibold group-hover:text-amber-300">Fire</span>
             <div id="slot-1-cd" class="absolute inset-0 bg-slate-950/80 flex items-center justify-center text-[10px] font-black text-amber-300 hidden"></div>
           </div>
 
           <!-- 2: Absolute Frost (Yamada's spell) -->
-          <div class="relative w-11 h-11 rounded-xl bg-slate-900 border border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:border-amber-400 transition-all group overflow-hidden" id="slot-2">
-            <span class="text-lg">❄️</span>
+          <div class="relative w-11 h-11 rounded-xl bg-slate-900 border border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:border-amber-400 transition-all group overflow-hidden" id="slot-2" title="Absolute Frost [2]">
+            <div class="text-sky-300">${getIcon('frost', 20)}</div>
             <span class="absolute -top-1.5 left-0.5 bg-slate-800 text-sky-300 text-[8px] font-bold px-1 rounded border border-slate-600">2</span>
             <span class="absolute bottom-0 text-[7px] text-slate-400 font-semibold group-hover:text-amber-300">Frost</span>
             <div id="slot-2-cd" class="absolute inset-0 bg-slate-950/80 flex items-center justify-center text-[10px] font-black text-sky-300 hidden"></div>
           </div>
 
           <!-- 3: Meteor Cataclysm -->
-          <div class="relative w-11 h-11 rounded-xl bg-slate-900 border border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:border-amber-400 transition-all group overflow-hidden" id="slot-3">
-            <span class="text-lg">☄️</span>
+          <div class="relative w-11 h-11 rounded-xl bg-slate-900 border border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:border-amber-400 transition-all group overflow-hidden" id="slot-3" title="Meteor Cataclysm [3]">
+            <div class="text-rose-400">${getIcon('meteor', 20)}</div>
             <span class="absolute -top-1.5 left-0.5 bg-slate-800 text-rose-300 text-[8px] font-bold px-1 rounded border border-slate-600">3</span>
             <span class="absolute bottom-0 text-[7px] text-slate-400 font-semibold group-hover:text-amber-300">Meteor</span>
             <div id="slot-3-cd" class="absolute inset-0 bg-slate-950/80 flex items-center justify-center text-[10px] font-black text-rose-300 hidden"></div>
           </div>
 
           <!-- 4: Sakura Blessing -->
-          <div class="relative w-11 h-11 rounded-xl bg-slate-900 border border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:border-amber-400 transition-all group overflow-hidden" id="slot-4">
-            <span class="text-lg">🌸</span>
+          <div class="relative w-11 h-11 rounded-xl bg-slate-900 border border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:border-amber-400 transition-all group overflow-hidden" id="slot-4" title="Sakura Blessing [4]">
+            <div class="text-emerald-400">${getIcon('heal', 20)}</div>
             <span class="absolute -top-1.5 left-0.5 bg-slate-800 text-emerald-300 text-[8px] font-bold px-1 rounded border border-slate-600">4</span>
             <span class="absolute bottom-0 text-[7px] text-slate-400 font-semibold group-hover:text-amber-300">Heal</span>
             <div id="slot-4-cd" class="absolute inset-0 bg-slate-950/80 flex items-center justify-center text-[10px] font-black text-emerald-300 hidden"></div>
           </div>
 
           <!-- 5: Phantom Dash -->
-          <div class="relative w-11 h-11 rounded-xl bg-slate-900 border border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:border-amber-400 transition-all group overflow-hidden" id="slot-5">
-            <span class="text-lg">⚡</span>
+          <div class="relative w-11 h-11 rounded-xl bg-slate-900 border border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:border-amber-400 transition-all group overflow-hidden" id="slot-5" title="Phantom Dash [5]">
+            <div class="text-purple-400">${getIcon('blink', 20)}</div>
             <span class="absolute -top-1.5 left-0.5 bg-slate-800 text-purple-300 text-[8px] font-bold px-1 rounded border border-slate-600">5</span>
             <span class="absolute bottom-0 text-[7px] text-slate-400 font-semibold group-hover:text-amber-300">Blink</span>
             <div id="slot-5-cd" class="absolute inset-0 bg-slate-950/80 flex items-center justify-center text-[10px] font-black text-purple-300 hidden"></div>
@@ -190,30 +204,30 @@ export class UIManager {
 
           <!-- Quick Menus -->
           <button id="btn-emotes" class="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-amber-300 border border-slate-700 hover:border-amber-400 flex items-center gap-1 transition-all" title="Anime Emotes Panel [E]">
-            <span>💬</span>
+            ${getIcon('chat', 14, 'text-amber-400')}
             <span class="hidden lg:inline">Emotes [E]</span>
           </button>
           <button id="btn-custom" class="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-200 border border-slate-700 flex items-center gap-1 transition-all" title="Character Profile [C]">
-            <span>👤</span>
+            ${getIcon('user', 14, 'text-slate-300')}
             <span class="hidden lg:inline">[C]</span>
           </button>
           <button id="btn-inventory" class="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-200 border border-slate-700 flex items-center gap-1 transition-all" title="Inventory Bag [I]">
-            <span>🎒</span>
+            ${getIcon('backpack', 14, 'text-slate-300')}
             <span class="hidden lg:inline">[I]</span>
           </button>
           <button id="btn-quests" class="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-200 border border-slate-700 flex items-center gap-1 transition-all" title="Guild Quests [Q]">
-            <span>📜</span>
+            ${getIcon('scroll', 14, 'text-slate-300')}
             <span class="hidden lg:inline">[Q]</span>
           </button>
           <button id="btn-map" class="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-200 border border-slate-700 flex items-center gap-1 transition-all" title="World Map [M]">
-            <span>🗺️</span>
+            ${getIcon('map', 14, 'text-slate-300')}
             <span class="hidden lg:inline">[M]</span>
           </button>
         </div>
 
-        <!-- Controls Guide (Compact, doesn't wrap awkwardly) -->
+        <!-- Controls Guide (Compact) -->
         <div class="text-[9px] text-slate-400 font-medium tracking-wide drop-shadow bg-slate-950/70 px-2.5 py-0.5 rounded-full border border-slate-800">
-          WASD Move · Shift Sprint · Space Attack · 1-5 Skills · E Emotes · F Interact · C Profile · I Bag · Q Quest · M Map
+          WASD Move · Shift Sprint · Space/Click Auto-Aim Slash · 1-5 Aim & Cast Skills · E Emotes · F Interact · Esc Cancel
         </div>
       </div>
 
@@ -222,11 +236,11 @@ export class UIManager {
         <!-- Emote & Chat Collapse Header -->
         <div class="flex items-center justify-between pl-1 pr-1">
           <div class="flex items-center gap-1">
-            <button class="emote-btn px-1.5 py-0.5 rounded bg-slate-900/80 hover:bg-slate-800 text-[10px] border border-slate-700 text-white" data-emote="❤️">❤️</button>
-            <button class="emote-btn px-1.5 py-0.5 rounded bg-slate-900/80 hover:bg-slate-800 text-[10px] border border-slate-700 text-white" data-emote="✨">✨</button>
-            <button class="emote-btn px-1.5 py-0.5 rounded bg-slate-900/80 hover:bg-slate-800 text-[10px] border border-slate-700 text-white" data-emote="💧">💧</button>
-            <button class="emote-btn px-1.5 py-0.5 rounded bg-slate-900/80 hover:bg-slate-800 text-[10px] border border-slate-700 text-white" data-emote="💢">💢</button>
-            <button class="emote-btn px-1.5 py-0.5 rounded bg-slate-900/80 hover:bg-slate-800 text-[10px] border border-slate-700 text-white" data-emote="💤">💤</button>
+            <button class="emote-btn px-1.5 py-0.5 rounded bg-slate-900/80 hover:bg-slate-800 text-[10px] border border-slate-700 text-white flex items-center justify-center" data-emote="❤️" title="Heart">${getIcon('emote_heart', 13)}</button>
+            <button class="emote-btn px-1.5 py-0.5 rounded bg-slate-900/80 hover:bg-slate-800 text-[10px] border border-slate-700 text-white flex items-center justify-center" data-emote="✨" title="Sparkle">${getIcon('emote_sparkle', 13)}</button>
+            <button class="emote-btn px-1.5 py-0.5 rounded bg-slate-900/80 hover:bg-slate-800 text-[10px] border border-slate-700 text-white flex items-center justify-center" data-emote="💧" title="Sweat">${getIcon('emote_sweat', 13)}</button>
+            <button class="emote-btn px-1.5 py-0.5 rounded bg-slate-900/80 hover:bg-slate-800 text-[10px] border border-slate-700 text-white flex items-center justify-center" data-emote="💢" title="Angry">${getIcon('emote_angry', 13)}</button>
+            <button class="emote-btn px-1.5 py-0.5 rounded bg-slate-900/80 hover:bg-slate-800 text-[10px] border border-slate-700 text-white flex items-center justify-center" data-emote="💤" title="Sleepy">${getIcon('emote_sleep', 13)}</button>
           </div>
           <button id="toggle-chat-panel-btn" class="text-[9px] text-slate-300 hover:text-white px-2 py-0.5 rounded bg-slate-900/80 border border-slate-700 flex items-center gap-1 font-bold">
             Chat ▾
@@ -338,67 +352,73 @@ export class UIManager {
     });
 
     // Audio mute toggle
-    document.getElementById('audio-toggle-btn')?.addEventListener('click', (e) => {
+    document.getElementById('audio-toggle-btn')?.addEventListener('click', () => {
       const isMuted = sound.toggleMute();
-      e.target.textContent = isMuted ? '🔇' : '🔊';
+      const btn = document.getElementById('audio-toggle-btn');
+      if (btn) {
+        btn.innerHTML = isMuted ? getIcon('soundOff', 13, 'text-slate-400') : getIcon('soundOn', 13, 'text-amber-400');
+      }
     });
 
-    // Hotbar click events
+    // Hotbar click events (Aim or Cast)
     document.getElementById('slot-space')?.addEventListener('click', () => {
-      this.player.performBasicAttack(this.world, this.particleSystem, this.combatTextSystem, this.npcManager);
+      if (this.player.aimingSkill) {
+        this.player.castAimingSkill(this.world, this.particleSystem, this.combatTextSystem, this.npcManager);
+      } else {
+        this.player.performBasicAttack(this.world, this.particleSystem, this.combatTextSystem, this.npcManager);
+      }
     });
+
     [1, 2, 3, 4, 5].forEach(num => {
       document.getElementById(`slot-${num}`)?.addEventListener('click', () => {
         this.player.useSkill(num, this.world, this.particleSystem, this.combatTextSystem, this.npcManager);
       });
     });
 
-    // Modal buttons
+    // Menu buttons
     document.getElementById('btn-emotes')?.addEventListener('click', () => this.toggleEmotePanel());
-    document.getElementById('player-avatar-preview')?.addEventListener('click', () => this.openCustomizerModal());
     document.getElementById('btn-custom')?.addEventListener('click', () => this.openCustomizerModal());
     document.getElementById('btn-inventory')?.addEventListener('click', () => this.openInventoryModal());
     document.getElementById('btn-quests')?.addEventListener('click', () => this.openQuestsModal());
     document.getElementById('btn-map')?.addEventListener('click', () => this.openWorldMapModal());
+    document.getElementById('player-avatar-preview')?.addEventListener('click', () => this.openCustomizerModal());
 
-    // Emote buttons
-    document.querySelectorAll('.emote-btn').forEach(btn => {
+    // Quick emote buttons
+    this.container.querySelectorAll('.emote-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const em = btn.getAttribute('data-emote');
-        this.player.triggerEmote(em);
+        const symbol = btn.getAttribute('data-emote');
+        this.triggerPlayerEmote(symbol, symbol);
       });
     });
 
     // Chat tabs
-    document.querySelectorAll('.chat-tab-btn').forEach(btn => {
+    this.container.querySelectorAll('.chat-tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        document.querySelectorAll('.chat-tab-btn').forEach(b => {
+        this.activeChatTab = btn.getAttribute('data-channel');
+        this.container.querySelectorAll('.chat-tab-btn').forEach(b => {
           b.className = 'chat-tab-btn px-1.5 py-0.5 text-[9px] font-bold rounded text-slate-400 hover:text-white';
         });
         btn.className = 'chat-tab-btn px-1.5 py-0.5 text-[9px] font-bold rounded bg-slate-800 text-amber-300';
-        this.activeChatTab = btn.getAttribute('data-channel');
         this.renderChatMessages();
-        sound.playClick();
       });
     });
 
     // Chat send
     const sendChat = () => {
       const input = document.getElementById('chat-input');
-      if (input && input.value.trim()) {
-        const text = input.value.trim();
-        this.chatMessages.push({
-          sender: this.player.name,
-          channel: 'all',
-          text
-        });
-        this.player.triggerEmote('💬');
-        input.value = '';
-        this.renderChatMessages();
+      if (!input) return;
+      const text = input.value.trim();
+      if (!text) return;
 
-        // Intelligent NPC reaction to chat
-        this.triggerNPCChatReaction(text);
-      }
+      this.chatMessages.push({
+        sender: this.player.name,
+        channel: this.activeChatTab === 'system' ? 'all' : this.activeChatTab,
+        text
+      });
+      input.value = '';
+      this.renderChatMessages();
+      sound.playClick();
+      this.triggerNPCChatReaction(text);
     };
 
     document.getElementById('chat-send-btn')?.addEventListener('click', sendChat);
@@ -406,10 +426,9 @@ export class UIManager {
       if (e.key === 'Enter') {
         sendChat();
       }
-      e.stopPropagation();
     });
 
-    // Close modal on outside click
+    // Modal background close
     document.getElementById('modal-overlay')?.addEventListener('click', (e) => {
       if (e.target.id === 'modal-overlay') {
         this.closeModal();
@@ -456,10 +475,15 @@ export class UIManager {
 
     const avatarIcon = document.getElementById('hud-avatar-icon');
     if (avatarIcon) {
-      if (this.player.custom.hair === 'afro' || this.player.custom.headAccessory === 'afro') avatarIcon.textContent = '🥦';
-      else if (this.player.custom.outfit === 'archmage') avatarIcon.textContent = '🧙';
-      else if (this.player.custom.outfit === 'paladin') avatarIcon.textContent = '🛡️';
-      else avatarIcon.textContent = '⚔️';
+      if (this.player.custom.hair === 'afro' || this.player.custom.headAccessory === 'afro') {
+        avatarIcon.innerHTML = getIcon('emote_afro', 18);
+      } else if (this.player.custom.outfit === 'archmage') {
+        avatarIcon.innerHTML = getIcon('wizard', 18);
+      } else if (this.player.custom.outfit === 'paladin') {
+        avatarIcon.innerHTML = getIcon('shield', 18);
+      } else {
+        avatarIcon.innerHTML = getIcon('swords', 18);
+      }
     }
 
     const zoneName = document.getElementById('hud-zone-name');
@@ -467,8 +491,19 @@ export class UIManager {
       zoneName.textContent = this.world.getCurrentZone(this.player.x, this.player.y);
     }
 
+    // Cooldown & Aiming Highlights for Hotbar
     this.player.skills.forEach(s => {
+      const slotEl = document.getElementById(`slot-${s.id}`);
       const cdEl = document.getElementById(`slot-${s.id}-cd`);
+
+      if (slotEl) {
+        if (this.player.aimingSkill && this.player.aimingSkill.id === s.id) {
+          slotEl.classList.add('ring-2', 'ring-amber-400', 'bg-amber-500/25');
+        } else {
+          slotEl.classList.remove('ring-2', 'ring-amber-400', 'bg-amber-500/25');
+        }
+      }
+
       if (cdEl) {
         if (s.currentCd > 0) {
           cdEl.classList.remove('hidden');
@@ -478,6 +513,18 @@ export class UIManager {
         }
       }
     });
+
+    // Aiming Banner
+    const aimPrompt = document.getElementById('aim-prompt');
+    const aimText = document.getElementById('aim-prompt-text');
+    if (aimPrompt) {
+      if (this.player.aimingSkill) {
+        aimPrompt.classList.remove('hidden');
+        if (aimText) aimText.textContent = `AIMING: ${this.player.aimingSkill.name.toUpperCase()}`;
+      } else {
+        aimPrompt.classList.add('hidden');
+      }
+    }
 
     this.updatePartyHUD();
     this.drawMinimap();
@@ -500,8 +547,8 @@ export class UIManager {
 
     container.innerHTML = inPartyNpcs.map(npc => `
       <div class="rpg-panel rounded-lg p-1.5 flex items-center gap-2 w-60 border border-slate-700/60 shadow">
-        <div class="w-7 h-7 rounded-full bg-slate-800 border border-amber-400 overflow-hidden flex items-center justify-center text-xs shrink-0">
-          ${npc.id === 'yamada' ? (npc.hair === 'afro' ? '🥦' : '🧙') : (npc.id === 'akane' ? '🎀' : '✨')}
+        <div class="w-7 h-7 rounded-full bg-slate-800 border border-amber-400 overflow-hidden flex items-center justify-center text-xs shrink-0 text-amber-300">
+          ${npc.id === 'yamada' ? getIcon('wizard', 14) : (npc.id === 'akane' ? getIcon('ribbon', 14) : getIcon('crown', 14))}
         </div>
         <div class="flex-1 min-w-0">
           <div class="flex items-center justify-between text-[10px]">
@@ -760,7 +807,7 @@ export class UIManager {
     this.chatMessages.push({
       sender: this.player.name,
       channel: 'all',
-      text: `* Expressed ${symbol} [${label}] *`
+      text: `* Expressed [${label}] *`
     });
     this.renderChatMessages();
 
@@ -785,7 +832,7 @@ export class UIManager {
               npc.emote = '✨';
               npc.emoteTimer = 2.5;
             } else {
-              npc.emote = '😋';
+              npc.emote = '✨';
               npc.emoteTimer = 2.0;
             }
           } else if (symbol === '🥦') {
@@ -823,36 +870,38 @@ export class UIManager {
     overlay.classList.remove('hidden');
 
     const emoteList = [
-      { id: '1', symbol: '❤️', label: 'Heart', desc: 'Love & gratitude', key: '1' },
-      { id: '2', symbol: '✨', label: 'Sparkle', desc: 'Lv.999 power flex', key: '2' },
-      { id: '3', symbol: '💧', label: 'Sweatdrop', desc: 'Panic & embarrassment', key: '3' },
-      { id: '4', symbol: '💢', label: 'Angry', desc: 'Tsundere comedy rage', key: '4' },
-      { id: '5', symbol: '💤', label: 'Sleepy', desc: 'Resting & AFK', key: '5' },
-      { id: '6', symbol: '❓', label: 'Question', desc: 'Curious inquiry', key: '6' },
-      { id: '7', symbol: '🍫', label: 'Chocolate', desc: 'Guild sweets snack', key: '7' },
-      { id: '8', symbol: '⚔️', label: 'Battle Ready', desc: 'Ready to fight monsters!', key: '8' },
-      { id: '9', symbol: '🎉', label: 'Celebrate', desc: 'Cheering & victory fanfare', key: '9' },
-      { id: '10', symbol: '🍵', label: 'Cozy Tea', desc: 'Resting by hearth', key: '0' },
-      { id: '11', symbol: '🥦', label: 'Yamada Afro', desc: 'Legendary afro salute', key: '-' },
-      { id: '12', symbol: '💬', label: 'Greeting', desc: 'Konnichiwa, adventurers!', key: '=' }
+      { id: '1', symbol: '❤️', iconKey: 'emote_heart', label: 'Heart', desc: 'Love & gratitude', key: '1' },
+      { id: '2', symbol: '✨', iconKey: 'emote_sparkle', label: 'Sparkle', desc: 'Lv.999 power flex', key: '2' },
+      { id: '3', symbol: '💧', iconKey: 'emote_sweat', label: 'Sweatdrop', desc: 'Panic & embarrassment', key: '3' },
+      { id: '4', symbol: '💢', iconKey: 'emote_angry', label: 'Angry', desc: 'Tsundere comedy rage', key: '4' },
+      { id: '5', symbol: '💤', iconKey: 'emote_sleep', label: 'Sleepy', desc: 'Resting & AFK', key: '5' },
+      { id: '6', symbol: '❓', iconKey: 'emote_help', label: 'Question', desc: 'Curious inquiry', key: '6' },
+      { id: '7', symbol: '🍫', iconKey: 'emote_choco', label: 'Chocolate', desc: 'Guild sweets snack', key: '7' },
+      { id: '8', symbol: '⚔️', iconKey: 'emote_swords', label: 'Battle Ready', desc: 'Ready to fight monsters!', key: '8' },
+      { id: '9', symbol: '🎉', iconKey: 'emote_party', label: 'Celebrate', desc: 'Cheering & victory fanfare', key: '9' },
+      { id: '10', symbol: '🍵', iconKey: 'emote_tea', label: 'Cozy Tea', desc: 'Resting by hearth', key: '0' },
+      { id: '11', symbol: '🥦', iconKey: 'emote_afro', label: 'Yamada Afro', desc: 'Legendary afro salute', key: '-' },
+      { id: '12', symbol: '💬', iconKey: 'emote_chat', label: 'Greeting', desc: 'Konnichiwa, adventurers!', key: '=' }
     ];
 
     content.innerHTML = `
       <div class="flex items-center justify-between border-b border-slate-700/80 pb-2.5 mb-3">
         <div class="flex items-center gap-2">
-          <span class="text-xl">💬</span>
+          <span class="text-amber-400">${getIcon('chat', 20)}</span>
           <div>
             <h2 class="text-base font-bold text-slate-100">Anime Emote Selection [E]</h2>
             <p class="text-[11px] text-slate-400">Display visual speech bubbles above your character</p>
           </div>
         </div>
-        <button id="modal-close-btn" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center font-bold text-xs">✕</button>
+        <button id="modal-close-btn" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center font-bold text-xs">${getIcon('close', 14)}</button>
       </div>
 
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-80 overflow-y-auto p-1">
         ${emoteList.map(item => `
-          <button class="select-emote-item p-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 hover:border-amber-400 flex flex-col items-center justify-center gap-1 transition-all group hover:scale-[1.03] text-center" data-symbol="${item.symbol}" data-label="${item.label}">
-            <span class="text-2xl group-hover:scale-125 transition-transform filter drop-shadow">${item.symbol}</span>
+          <button class="select-emote-item p-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 hover:border-amber-400 flex flex-col items-center justify-center gap-1.5 transition-all group hover:scale-[1.03] text-center" data-symbol="${item.symbol}" data-label="${item.label}">
+            <div class="w-8 h-8 rounded-full bg-slate-800/80 flex items-center justify-center group-hover:scale-115 transition-transform">
+              ${getIcon(item.iconKey, 22)}
+            </div>
             <div class="flex items-center gap-1">
               <span class="text-[9px] bg-slate-800 group-hover:bg-amber-400 group-hover:text-slate-950 text-slate-300 font-mono font-bold px-1 rounded border border-slate-700">${item.key}</span>
               <span class="text-xs font-bold text-slate-200 group-hover:text-amber-300">${item.label}</span>
@@ -895,13 +944,13 @@ export class UIManager {
     content.innerHTML = `
       <div class="flex items-center justify-between border-b border-slate-700/80 pb-2.5 mb-3">
         <div class="flex items-center gap-2">
-          <span class="text-xl">👤</span>
+          <span class="text-amber-400">${getIcon('user', 20)}</span>
           <div>
             <h2 class="text-base font-bold text-slate-100">Character Profile & Customization</h2>
             <p class="text-[11px] text-slate-400">Design your avatar and title in Forest of Savior</p>
           </div>
         </div>
-        <button id="modal-close-btn" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center font-bold text-xs">✕</button>
+        <button id="modal-close-btn" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center font-bold text-xs">${getIcon('close', 14)}</button>
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -914,10 +963,18 @@ export class UIManager {
           <div>
             <label class="block text-xs font-semibold text-slate-300 mb-1">Hairstyle (Including Yamada's Afro!)</label>
             <div class="grid grid-cols-2 gap-1.5 text-xs">
-              <button class="hair-opt px-2.5 py-1.5 rounded-lg border text-left ${p.custom.hair === 'afro' ? 'border-amber-400 bg-amber-500/10 text-amber-300' : 'border-slate-700 bg-slate-800 text-slate-300'}" data-hair="afro">🥦 Yamada Afro</button>
-              <button class="hair-opt px-2.5 py-1.5 rounded-lg border text-left ${p.custom.hair === 'anime_bangs' ? 'border-amber-400 bg-amber-500/10 text-amber-300' : 'border-slate-700 bg-slate-800 text-slate-300'}" data-hair="anime_bangs">✨ Cool Bangs</button>
-              <button class="hair-opt px-2.5 py-1.5 rounded-lg border text-left ${p.custom.hair === 'twintails' ? 'border-amber-400 bg-amber-500/10 text-amber-300' : 'border-slate-700 bg-slate-800 text-slate-300'}" data-hair="twintails">🎀 Twintails</button>
-              <button class="hair-opt px-2.5 py-1.5 rounded-lg border text-left ${p.custom.hair === 'long_bangs' ? 'border-amber-400 bg-amber-500/10 text-amber-300' : 'border-slate-700 bg-slate-800 text-slate-300'}" data-hair="long_bangs">👑 Princess Locks</button>
+              <button class="hair-opt px-2.5 py-1.5 rounded-lg border text-left flex items-center gap-1.5 ${p.custom.hair === 'afro' ? 'border-amber-400 bg-amber-500/10 text-amber-300' : 'border-slate-700 bg-slate-800 text-slate-300'}" data-hair="afro">
+                ${getIcon('emote_afro', 14)} Yamada Afro
+              </button>
+              <button class="hair-opt px-2.5 py-1.5 rounded-lg border text-left flex items-center gap-1.5 ${p.custom.hair === 'anime_bangs' ? 'border-amber-400 bg-amber-500/10 text-amber-300' : 'border-slate-700 bg-slate-800 text-slate-300'}" data-hair="anime_bangs">
+                ${getIcon('sparkles', 14)} Cool Bangs
+              </button>
+              <button class="hair-opt px-2.5 py-1.5 rounded-lg border text-left flex items-center gap-1.5 ${p.custom.hair === 'twintails' ? 'border-amber-400 bg-amber-500/10 text-amber-300' : 'border-slate-700 bg-slate-800 text-slate-300'}" data-hair="twintails">
+                ${getIcon('ribbon', 14)} Twintails
+              </button>
+              <button class="hair-opt px-2.5 py-1.5 rounded-lg border text-left flex items-center gap-1.5 ${p.custom.hair === 'long_bangs' ? 'border-amber-400 bg-amber-500/10 text-amber-300' : 'border-slate-700 bg-slate-800 text-slate-300'}" data-hair="long_bangs">
+                ${getIcon('crown', 14)} Princess Locks
+              </button>
             </div>
           </div>
 
@@ -933,10 +990,18 @@ export class UIManager {
           <div>
             <label class="block text-xs font-semibold text-slate-300 mb-1">Class Outfit</label>
             <div class="grid grid-cols-2 gap-1.5 text-xs">
-              <button class="outfit-opt px-2.5 py-1.5 rounded-lg border text-left ${p.custom.outfit === 'archmage' ? 'border-amber-400 bg-amber-500/10 text-amber-300' : 'border-slate-700 bg-slate-800 text-slate-300'}" data-outfit="archmage">🧙 Archmage Robe</button>
-              <button class="outfit-opt px-2.5 py-1.5 rounded-lg border text-left ${p.custom.outfit === 'paladin' ? 'border-amber-400 bg-amber-500/10 text-amber-300' : 'border-slate-700 bg-slate-800 text-slate-300'}" data-outfit="paladin">🛡️ Paladin Steel</button>
-              <button class="outfit-opt px-2.5 py-1.5 rounded-lg border text-left ${p.custom.outfit === 'chocolate_tunic' ? 'border-amber-400 bg-amber-500/10 text-amber-300' : 'border-slate-700 bg-slate-800 text-slate-300'}" data-outfit="chocolate_tunic">🍫 Chocolate Guild</button>
-              <button class="outfit-opt px-2.5 py-1.5 rounded-lg border text-left ${p.custom.outfit === 'adventurer' ? 'border-amber-400 bg-amber-500/10 text-amber-300' : 'border-slate-700 bg-slate-800 text-slate-300'}" data-outfit="adventurer">⚔️ Adventurer</button>
+              <button class="outfit-opt px-2.5 py-1.5 rounded-lg border text-left flex items-center gap-1.5 ${p.custom.outfit === 'archmage' ? 'border-amber-400 bg-amber-500/10 text-amber-300' : 'border-slate-700 bg-slate-800 text-slate-300'}" data-outfit="archmage">
+                ${getIcon('wizard', 14)} Archmage Robe
+              </button>
+              <button class="outfit-opt px-2.5 py-1.5 rounded-lg border text-left flex items-center gap-1.5 ${p.custom.outfit === 'paladin' ? 'border-amber-400 bg-amber-500/10 text-amber-300' : 'border-slate-700 bg-slate-800 text-slate-300'}" data-outfit="paladin">
+                ${getIcon('shield', 14)} Paladin Steel
+              </button>
+              <button class="outfit-opt px-2.5 py-1.5 rounded-lg border text-left flex items-center gap-1.5 ${p.custom.outfit === 'chocolate_tunic' ? 'border-amber-400 bg-amber-500/10 text-amber-300' : 'border-slate-700 bg-slate-800 text-slate-300'}" data-outfit="chocolate_tunic">
+                ${getIcon('cake', 14)} Chocolate Guild
+              </button>
+              <button class="outfit-opt px-2.5 py-1.5 rounded-lg border text-left flex items-center gap-1.5 ${p.custom.outfit === 'adventurer' ? 'border-amber-400 bg-amber-500/10 text-amber-300' : 'border-slate-700 bg-slate-800 text-slate-300'}" data-outfit="adventurer">
+                ${getIcon('swords', 14)} Adventurer
+              </button>
             </div>
           </div>
         </div>
@@ -1029,13 +1094,13 @@ export class UIManager {
     content.innerHTML = `
       <div class="flex items-center justify-between border-b border-slate-700/80 pb-2.5 mb-3">
         <div class="flex items-center gap-2">
-          <span class="text-xl">🎒</span>
+          <span class="text-amber-400">${getIcon('backpack', 20)}</span>
           <div>
             <h2 class="text-base font-bold text-slate-100">Adventurer's Inventory</h2>
             <p class="text-[11px] text-slate-400">Pouch Gold: <span class="text-amber-400 font-bold">${this.player.gold} Gold</span></p>
           </div>
         </div>
-        <button id="modal-close-btn" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center font-bold text-xs">✕</button>
+        <button id="modal-close-btn" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center font-bold text-xs">${getIcon('close', 14)}</button>
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-80 overflow-y-auto">
@@ -1043,7 +1108,7 @@ export class UIManager {
           <div class="bg-slate-900/90 rounded-xl p-2.5 border border-slate-700 flex items-center justify-between">
             <div class="flex items-center gap-2.5 min-w-0">
               <div class="w-8 h-8 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center text-sm shrink-0">
-                ${item.type === 'consumable' ? '🧪' : (item.type === 'material' ? '🌸' : (item.type === 'weapon' ? '🪄' : '💍'))}
+                ${item.type === 'consumable' ? (item.heal ? getIcon('potion', 16, 'text-rose-400') : (item.buff ? getIcon('cake', 16, 'text-amber-500') : getIcon('potion', 16, 'text-sky-400'))) : getIcon('herb', 16, 'text-emerald-400')}
               </div>
               <div class="min-w-0">
                 <h4 class="text-xs font-bold text-slate-100 truncate">${item.name} <span class="text-amber-400 font-mono">x${item.count}</span></h4>
@@ -1082,19 +1147,21 @@ export class UIManager {
     content.innerHTML = `
       <div class="flex items-center justify-between border-b border-slate-700/80 pb-2.5 mb-3">
         <div class="flex items-center gap-2">
-          <span class="text-xl">📜</span>
+          <span class="text-amber-400">${getIcon('scroll', 20)}</span>
           <div>
             <h2 class="text-base font-bold text-slate-100">Chocolate Everyday Guild Quests</h2>
             <p class="text-[11px] text-slate-400">Accept bounties from Akane, Rurihime, and Takezo</p>
           </div>
         </div>
-        <button id="modal-close-btn" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center font-bold text-xs">✕</button>
+        <button id="modal-close-btn" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center font-bold text-xs">${getIcon('close', 14)}</button>
       </div>
 
       <div class="space-y-2.5">
         <div class="bg-slate-900/90 rounded-xl p-3 border ${quests.herbs.completed ? 'border-emerald-500/50' : 'border-slate-700'}">
           <div class="flex justify-between items-center">
-            <h4 class="text-xs font-bold text-pink-300">🌸 ${quests.herbs.name}</h4>
+            <h4 class="text-xs font-bold text-pink-300 flex items-center gap-1.5">
+              ${getIcon('herb', 15, 'text-pink-400')} ${quests.herbs.name}
+            </h4>
             <span class="text-[11px] font-bold ${quests.herbs.completed ? 'text-emerald-400' : 'text-amber-400'}">
               ${quests.herbs.completed ? 'Completed' : `${quests.herbs.progress} / ${quests.herbs.total}`}
             </span>
@@ -1107,7 +1174,9 @@ export class UIManager {
 
         <div class="bg-slate-900/90 rounded-xl p-3 border ${quests.wolves.completed ? 'border-emerald-500/50' : 'border-slate-700'}">
           <div class="flex justify-between items-center">
-            <h4 class="text-xs font-bold text-amber-300">🐺 ${quests.wolves.name}</h4>
+            <h4 class="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+              ${getIcon('wolf', 15, 'text-amber-400')} ${quests.wolves.name}
+            </h4>
             <span class="text-[11px] font-bold ${quests.wolves.completed ? 'text-emerald-400' : 'text-amber-400'}">
               ${quests.wolves.completed ? 'Completed' : `${quests.wolves.progress} / ${quests.wolves.total}`}
             </span>
@@ -1120,7 +1189,9 @@ export class UIManager {
 
         <div class="bg-slate-900/90 rounded-xl p-3 border ${quests.golem.completed ? 'border-emerald-500/50' : 'border-slate-700'}">
           <div class="flex justify-between items-center">
-            <h4 class="text-xs font-bold text-purple-300">🗿 ${quests.golem.name}</h4>
+            <h4 class="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+              ${getIcon('golem', 15, 'text-purple-400')} ${quests.golem.name}
+            </h4>
             <span class="text-[11px] font-bold ${quests.golem.completed ? 'text-emerald-400' : 'text-purple-400'}">
               ${quests.golem.completed ? 'Completed' : `${quests.golem.progress} / ${quests.golem.total}`}
             </span>
@@ -1148,19 +1219,19 @@ export class UIManager {
     content.innerHTML = `
       <div class="flex items-center justify-between border-b border-slate-700/80 pb-2.5 mb-3">
         <div class="flex items-center gap-2">
-          <span class="text-xl">🗺️</span>
+          <span class="text-amber-400">${getIcon('map', 20)}</span>
           <div>
             <h2 class="text-base font-bold text-slate-100">Forest of Savior - Continent Map</h2>
             <p class="text-[11px] text-slate-400">Open-world territories and boss arenas</p>
           </div>
         </div>
-        <button id="modal-close-btn" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center font-bold text-xs">✕</button>
+        <button id="modal-close-btn" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center font-bold text-xs">${getIcon('close', 14)}</button>
       </div>
 
       <div class="relative rounded-xl overflow-hidden border border-amber-900/50 shadow-2xl bg-amber-950/20">
         <img src="/src/assets/images/fos_world_map_1791727794259.jpg" alt="Forest of Savior World Map" class="w-full h-auto object-cover max-h-[55vh]" />
         <div class="absolute bottom-2 left-2 bg-slate-950/80 px-2.5 py-1 rounded-lg border border-slate-800 text-[10px] text-amber-200">
-          📍 Current Location: <span class="font-bold text-white">${this.world.getCurrentZone(this.player.x, this.player.y)}</span>
+          Current Location: <span class="font-bold text-white">${this.world.getCurrentZone(this.player.x, this.player.y)}</span>
         </div>
       </div>
     `;
@@ -1188,8 +1259,8 @@ export class UIManager {
             ${isYamada ? `
               <img src="/src/assets/images/fos_yamada_avatar_1791727806371.jpg" alt="Yamada" class="w-full h-full object-cover" />
             ` : `
-              <div class="w-full h-full flex items-center justify-center text-2xl">
-                ${npc.id === 'akane' ? '🎀' : (npc.id === 'rurihime' ? '👑' : '🛡️')}
+              <div class="w-full h-full flex items-center justify-center text-amber-400">
+                ${npc.id === 'akane' ? getIcon('ribbon', 26) : (npc.id === 'rurihime' ? getIcon('crown', 26) : getIcon('shield', 26))}
               </div>
             `}
           </div>

@@ -19,7 +19,9 @@ class GameEngine {
 
     // Input state
     this.input = {
-      keys: {}
+      keys: {},
+      mouseScreen: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+      mouseWorld: { x: 1380, y: 1420 }
     };
 
     // Subsystems
@@ -27,6 +29,7 @@ class GameEngine {
     this.player = new Player();
     this.npcManager = new NPCManager(this.world);
     this.particleSystem = new ParticleSystem();
+    this.particleSystem.setPlayerRef(this.player);
     this.combatTextSystem = new CombatTextSystem();
     this.renderer = new GameRenderer(this.canvas);
     this.ui = new UIManager(
@@ -118,7 +121,11 @@ class GameEngine {
         if (this.ui.activeModal === 'worldmap') this.ui.closeModal();
         else this.ui.openWorldMapModal();
       } else if (e.code === 'Escape') {
-        this.ui.closeModal();
+        if (this.player.aimingSkill) {
+          this.player.cancelAiming();
+        } else {
+          this.ui.closeModal();
+        }
       } else if (e.code === 'Enter') {
         const chatInput = document.getElementById('chat-input');
         if (chatInput) {
@@ -143,6 +150,30 @@ class GameEngine {
   }
 
   initMouseControls() {
+    // Track mouse world coordinates for aim reticle & precision attacks
+    window.addEventListener('mousemove', (e) => {
+      this.input.mouseScreen = { x: e.clientX, y: e.clientY };
+      this.input.mouseWorld = this.renderer.screenToWorld(e.clientX, e.clientY);
+    });
+
+    // Mouse click for attack or skill casting
+    this.canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 0) { // Left click
+        if (this.player.aimingSkill) {
+          this.player.castAimingSkill(this.world, this.particleSystem, this.combatTextSystem, this.npcManager);
+        } else {
+          this.player.performBasicAttack(this.world, this.particleSystem, this.combatTextSystem, this.npcManager);
+        }
+      } else if (e.button === 2) { // Right click to cancel aiming
+        if (this.player.aimingSkill) {
+          this.player.cancelAiming();
+        }
+      }
+    });
+
+    // Prevent context menu on canvas
+    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
     // Zoom with mouse scroll wheel
     window.addEventListener('wheel', (e) => {
       if (e.deltaY < 0) {
@@ -215,8 +246,8 @@ class GameEngine {
     // 4. Check Proximity Prompts
     this.checkInteractionProximity();
 
-    // 5. Update Particles & Floating Text
-    this.particleSystem.update(dt);
+    // 5. Update Particles & Floating Text (with distance-attenuated shake)
+    this.particleSystem.update(dt, this.player);
     this.combatTextSystem.update(dt);
 
     // 6. Update Camera position (target player)

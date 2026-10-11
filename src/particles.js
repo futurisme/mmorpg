@@ -2,6 +2,7 @@
  * Advanced Particle Effects & Spell VFX for Forest of Savior RPG.
  * Anime aesthetics with falling celestial meteors, rotating runic summon circles,
  * crystalline ice spikes, shockwaves, drifting sakura petals, and floating combat text.
+ * Distance-attenuated screen shake engine (no screen shake for distant impacts).
  * 100% pure JavaScript.
  */
 
@@ -14,9 +15,14 @@ export class ParticleSystem {
     this.iceSpikes = [];
     this.maxSakura = 45;
     this.screenShake = 0;
-    this.shakeDecay = 12;
+    this.shakeDecay = 14;
+    this.playerRef = null;
 
     this.initSakura();
+  }
+
+  setPlayerRef(player) {
+    this.playerRef = player;
   }
 
   initSakura() {
@@ -34,7 +40,9 @@ export class ParticleSystem {
     }
   }
 
-  update(dt) {
+  update(dt, player = null) {
+    if (player) this.playerRef = player;
+
     // Screen shake decay
     if (this.screenShake > 0) {
       this.screenShake = Math.max(0, this.screenShake - this.shakeDecay * dt);
@@ -92,8 +100,8 @@ export class ParticleSystem {
       }
 
       if (m.progress >= 1) {
-        // Impact!
-        this.addScreenShake(14);
+        // Impact with distance attenuation!
+        this.addScreenShake(15, m.targetX, m.targetY, this.playerRef, 650);
         this.createMeteorImpactCrater(m.targetX, m.targetY);
         this.fallingMeteors.splice(i, 1);
       }
@@ -135,14 +143,33 @@ export class ParticleSystem {
     }
   }
 
-  addScreenShake(amount = 8) {
-    this.screenShake = Math.max(this.screenShake, amount);
+  /**
+   * Distance-attenuated Screen Shake:
+   * When source coordinates are provided, shake falls off with distance.
+   * If player is beyond maxRadius (e.g. 500-600px), intensity is 0 (no shake felt).
+   */
+  addScreenShake(amount = 8, sourceX = null, sourceY = null, player = null, maxRadius = 550) {
+    const p = player || this.playerRef;
+    if (sourceX !== null && sourceY !== null && p) {
+      const dist = Math.hypot(p.x - sourceX, p.y - sourceY);
+      if (dist >= maxRadius) {
+        return; // Zero shake when player is far away!
+      }
+      const factor = Math.max(0, 1 - (dist / maxRadius));
+      // Quadratic attenuation for realistic physical shockwave dropoff
+      const attenuatedAmount = amount * (factor * factor);
+      if (attenuatedAmount < 0.4) return;
+      this.screenShake = Math.max(this.screenShake, attenuatedAmount);
+    } else {
+      // Direct shake (e.g. player hit, self skill)
+      this.screenShake = Math.max(this.screenShake, amount);
+    }
   }
 
   addHitSpark(x, y) {
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 9; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 70 + Math.random() * 130;
+      const speed = 80 + Math.random() * 140;
       this.particles.push({
         x,
         y,
@@ -157,18 +184,38 @@ export class ParticleSystem {
     }
   }
 
-  addSlashArc(x, y, facing) {
+  addSlashArc(x, y, facing, angle = null) {
     this.particles.push({
       x,
       y,
       vx: 0,
       vy: 0,
       facing,
-      life: 0.22,
-      maxLife: 0.22,
+      angle,
+      life: 0.24,
+      maxLife: 0.24,
       type: 'slash_arc',
       color: '#38bdf8'
     });
+
+    // Add bright dynamic blade sparks along slash direction
+    const baseAngle = angle !== null ? angle : (
+      facing === 'right' ? 0 : (facing === 'down' ? Math.PI / 2 : (facing === 'left' ? Math.PI : -Math.PI / 2))
+    );
+    for (let i = -2; i <= 2; i++) {
+      const sparkAngle = baseAngle + (i * 0.2);
+      this.particles.push({
+        x: x + Math.cos(sparkAngle) * 15,
+        y: y + Math.sin(sparkAngle) * 15,
+        vx: Math.cos(sparkAngle) * (120 + Math.random() * 50),
+        vy: Math.sin(sparkAngle) * (120 + Math.random() * 50),
+        size: 2.5 + Math.random() * 2,
+        color: i % 2 === 0 ? '#38bdf8' : '#e0f2fe',
+        life: 0.2,
+        maxLife: 0.2,
+        type: 'spark'
+      });
+    }
   }
 
   addFootstepDust(x, y) {
@@ -178,23 +225,22 @@ export class ParticleSystem {
       vx: (Math.random() - 0.5) * 20,
       vy: -10 - Math.random() * 15,
       size: 3 + Math.random() * 2,
-      color: 'rgba(203, 213, 225, 0.4)',
-      life: 0.3,
-      maxLife: 0.3,
+      color: '#475569',
+      life: 0.35,
+      maxLife: 0.35,
       type: 'dust'
     });
   }
 
   addFireRing(x, y) {
-    this.addScreenShake(4);
-    // Add glowing ground rune circle
+    // Summon rune
     this.runicCircles.push({
       x,
       y,
-      radius: 70,
+      radius: 75,
       color: '#f97316',
       rot: 0,
-      rotSpeed: 2.5,
+      rotSpeed: 3.5,
       life: 0.6,
       maxLife: 0.6
     });
@@ -218,7 +264,7 @@ export class ParticleSystem {
   }
 
   addIceNova(x, y) {
-    this.addScreenShake(5);
+    this.addScreenShake(5, x, y, this.playerRef, 500);
     // Add ice summon rune
     this.runicCircles.push({
       x,
@@ -266,7 +312,8 @@ export class ParticleSystem {
   }
 
   addMeteor(targetX, targetY) {
-    this.addScreenShake(6);
+    // Initial warning rumble with distance falloff
+    this.addScreenShake(6, targetX, targetY, this.playerRef, 600);
     // 1. Project large glowing runic summoning matrix on target ground
     this.runicCircles.push({
       x: targetX,
@@ -355,7 +402,7 @@ export class ParticleSystem {
   }
 
   addGroundSlam(x, y) {
-    this.addScreenShake(8);
+    this.addScreenShake(8, x, y, this.playerRef, 500);
     for (let i = 0; i < 24; i++) {
       const angle = (i / 24) * Math.PI * 2;
       const dist = 30 + Math.random() * 25;

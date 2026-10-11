@@ -1,9 +1,10 @@
 /**
  * High-Performance 2D Canvas Pixel-Art Renderer for Forest of Savior RPG.
  * 2026 Engine Enhancements:
- * - Dynamic atmospheric sunbeams, god-rays & radial lighting
- * - Runic summoning matrices, celestial falling meteors, crystalline ice spikes
- * - Fluid monster animations: gelatinous slime cores, predator eye trails, golem energy
+ * - Dynamic atmospheric shaders: volumetric god-rays, chromatic aberration, radial fireglow, vignette
+ * - Smart Skill Aiming Reticle: rotating elemental runes, range indicators, trajectory line, magnetic target lock
+ * - Directional Slash Arc VFX: radiant curved sword swipe trails with precise angle rotation
+ * - Crisp Vector Emotes above character heads: 100% vector drawn, zero OS-dependent emojis
  * - Clean anti-overlapping overhead nameplates & crisp typography
  * 100% pure JavaScript.
  */
@@ -25,6 +26,9 @@ export class GameRenderer {
       scaleY: 0.84
     };
 
+    this.shakeX = 0;
+    this.shakeY = 0;
+    this.shakeAmount = 0;
     this.time = 0;
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -64,8 +68,17 @@ export class GameRenderer {
     this.camera.zoom += (this.camera.targetZoom - this.camera.zoom) * 0.1;
 
     // Screen shake offset
+    this.shakeAmount = screenShake;
     this.shakeX = screenShake > 0 ? (Math.random() - 0.5) * screenShake * 2 : 0;
     this.shakeY = screenShake > 0 ? (Math.random() - 0.5) * screenShake * 2 : 0;
+  }
+
+  screenToWorld(screenX, screenY) {
+    const cx = this.width / 2 + this.shakeX;
+    const cy = this.height / 2 + this.shakeY;
+    const worldX = (screenX - cx) / this.camera.zoom + this.camera.x;
+    const worldY = (screenY - cy) / (this.camera.zoom * this.camera.scaleY) + this.camera.y;
+    return { x: worldX, y: worldY };
   }
 
   render(world, player, npcManager, particleSystem, combatTextSystem) {
@@ -89,6 +102,11 @@ export class GameRenderer {
 
     // 4. Ground Runic Summon Circles (Rendered flat under characters)
     this.drawRunicCircles(ctx, particleSystem);
+
+    // 4b. Skill Aiming Reticle (If player is aiming a skill)
+    if (player.aimingSkill) {
+      this.drawSkillAimReticle(ctx, player);
+    }
 
     // 5. Campfire & Base Decorations
     this.drawBaseProps(ctx, world);
@@ -150,8 +168,131 @@ export class GameRenderer {
 
     ctx.restore();
 
-    // 13. Screen-Space Atmospheric Lighting & God Rays (Post-processing)
-    this.drawAtmosphere(ctx);
+    // 13. Screen-Space Atmospheric Shaders & Lighting (Post-processing)
+    this.drawAtmosphere(ctx, world, player);
+  }
+
+  /**
+   * Skill Aiming Reticle: Ground AoE circle, rotating runes, range limit, trajectory line
+   */
+  drawSkillAimReticle(ctx, player) {
+    const skill = player.aimingSkill;
+    if (!skill) return;
+
+    ctx.save();
+
+    // 1. Range Boundary Circle (Subtle dashed border around player)
+    const maxRange = skill.range || 200;
+    ctx.strokeStyle = `${skill.color}55`;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, maxRange, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 2. Trajectory beam from player to aim point
+    const beamGrad = ctx.createLinearGradient(player.x, player.y, player.aimX, player.aimY);
+    beamGrad.addColorStop(0, `${skill.color}11`);
+    beamGrad.addColorStop(1, `${skill.color}bb`);
+    ctx.strokeStyle = beamGrad;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(player.x, player.y);
+    ctx.lineTo(player.aimX, player.aimY);
+    ctx.stroke();
+
+    // 3. Ground Target AoE Ring
+    const aoeRadius = skill.aoeRadius || 60;
+    const pulse = Math.sin(this.time * 6) * 4;
+    const currentRadius = aoeRadius + pulse;
+
+    // Glowing AoE fill
+    const fillGrad = ctx.createRadialGradient(player.aimX, player.aimY, 5, player.aimX, player.aimY, currentRadius);
+    fillGrad.addColorStop(0, `${skill.color}44`);
+    fillGrad.addColorStop(0.8, `${skill.color}22`);
+    fillGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = fillGrad;
+    ctx.beginPath();
+    ctx.arc(player.aimX, player.aimY, currentRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Outer circle
+    ctx.strokeStyle = skill.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(player.aimX, player.aimY, currentRadius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 4. Rotating inner elemental rune ring
+    const rot = this.time * 2.5;
+    ctx.save();
+    ctx.translate(player.aimX, player.aimY);
+    ctx.rotate(rot);
+
+    ctx.strokeStyle = `${skill.color}aa`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, currentRadius * 0.65, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 4 Rune points
+    for (let i = 0; i < 4; i++) {
+      const angle = (i * Math.PI) / 2;
+      const rx = Math.cos(angle) * (currentRadius * 0.65);
+      const ry = Math.sin(angle) * (currentRadius * 0.65);
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(rx, ry, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // 5. Precision Crosshair
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(player.aimX - 8, player.aimY);
+    ctx.lineTo(player.aimX + 8, player.aimY);
+    ctx.moveTo(player.aimX, player.aimY - 8);
+    ctx.lineTo(player.aimX, player.aimY + 8);
+    ctx.stroke();
+
+    // 6. Magnetic Lock Indicator (If locked onto an enemy)
+    if (player.aimSnappedEnemy) {
+      const e = player.aimSnappedEnemy;
+      const bSize = e.radius + 14 + pulse * 0.5;
+
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 2;
+      // 4 Bracket corners [ ]
+      ctx.beginPath();
+      // Top-Left
+      ctx.moveTo(e.x - bSize, e.y - bSize + 8);
+      ctx.lineTo(e.x - bSize, e.y - bSize);
+      ctx.lineTo(e.x - bSize + 8, e.y - bSize);
+      // Top-Right
+      ctx.moveTo(e.x + bSize - 8, e.y - bSize);
+      ctx.lineTo(e.x + bSize, e.y - bSize);
+      ctx.lineTo(e.x + bSize, e.y - bSize + 8);
+      // Bottom-Left
+      ctx.moveTo(e.x - bSize, e.y + bSize - 8);
+      ctx.lineTo(e.x - bSize, e.y + bSize);
+      ctx.lineTo(e.x - bSize + 8, e.y + bSize);
+      // Bottom-Right
+      ctx.moveTo(e.x + bSize - 8, e.y + bSize);
+      ctx.lineTo(e.x + bSize, e.y + bSize);
+      ctx.lineTo(e.x + bSize, e.y + bSize - 8);
+      ctx.stroke();
+
+      // Lock label
+      ctx.font = 'bold 9px "Plus Jakarta Sans", sans-serif';
+      ctx.fillStyle = '#ef4444';
+      ctx.textAlign = 'center';
+      ctx.fillText('TARGET LOCKED', e.x, e.y - bSize - 5);
+    }
+
+    ctx.restore();
   }
 
   drawGround(ctx, world) {
@@ -239,36 +380,41 @@ export class GameRenderer {
 
   drawRunicCircles(ctx, particleSystem) {
     for (const rc of particleSystem.runicCircles) {
-      const alpha = Math.max(0, rc.life / rc.maxLife);
       ctx.save();
+      const alpha = Math.max(0, rc.life / rc.maxLife);
+      ctx.globalAlpha = alpha;
       ctx.translate(rc.x, rc.y);
+      ctx.scale(1, 0.65); // Tilted flat ellipse
       ctx.rotate(rc.rot);
-      ctx.globalAlpha = alpha * 0.85;
 
-      // Outer glowing ring
+      // Outer glowing glyph circle
       ctx.strokeStyle = rc.color;
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.arc(0, 0, rc.radius, 0, Math.PI * 2);
       ctx.stroke();
 
-      // Inner concentric ring
+      // Middle concentric ring
+      ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.arc(0, 0, rc.radius * 0.65, 0, Math.PI * 2);
+      ctx.arc(0, 0, rc.radius * 0.72, 0, Math.PI * 2);
       ctx.stroke();
 
-      // Arcane star geometry inside
+      // Runic star polygon
+      ctx.strokeStyle = rc.color;
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      for (let i = 0; i < 6; i++) {
-        const ang = (i / 6) * Math.PI * 2;
-        const x1 = Math.cos(ang) * rc.radius * 0.65;
-        const y1 = Math.sin(ang) * rc.radius * 0.65;
-        const x2 = Math.cos(ang + Math.PI * 0.66) * rc.radius * 0.65;
-        const y2 = Math.sin(ang + Math.PI * 0.66) * rc.radius * 0.65;
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
+      const points = 6;
+      for (let p = 0; p < points; p++) {
+        const ang = (p / points) * Math.PI * 2;
+        const rad = p % 2 === 0 ? rc.radius * 0.95 : rc.radius * 0.45;
+        const px = Math.cos(ang) * rad;
+        const py = Math.sin(ang) * rad;
+        if (p === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
       }
+      ctx.closePath();
       ctx.stroke();
 
       ctx.restore();
@@ -277,35 +423,37 @@ export class GameRenderer {
 
   drawIceSpikes(ctx, particleSystem) {
     for (const is of particleSystem.iceSpikes) {
-      const alpha = Math.max(0, is.life / is.maxLife);
       ctx.save();
+      const alpha = Math.min(1, is.life / 0.2);
       ctx.globalAlpha = alpha;
       ctx.translate(is.x, is.y);
       ctx.rotate(is.angle);
 
-      // Frost Shadow
-      ctx.fillStyle = 'rgba(56, 189, 248, 0.3)';
+      // 3D Ice Spike Shard
+      ctx.fillStyle = '#bae6fd';
       ctx.beginPath();
-      ctx.ellipse(0, 4, is.width, 5, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Main sharp ice shard
-      ctx.fillStyle = '#38bdf8';
-      ctx.beginPath();
-      ctx.moveTo(0, -is.height);
+      ctx.moveTo(-is.width / 2, 0);
+      ctx.lineTo(0, -is.height);
       ctx.lineTo(is.width / 2, 0);
-      ctx.lineTo(-is.width / 2, 0);
       ctx.closePath();
       ctx.fill();
 
-      // Diamond highlight facet
-      ctx.fillStyle = '#e0f2fe';
+      // Shaded face
+      ctx.fillStyle = '#0284c7';
       ctx.beginPath();
-      ctx.moveTo(0, -is.height);
-      ctx.lineTo(is.width / 3, -is.height * 0.2);
-      ctx.lineTo(0, 0);
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, -is.height);
+      ctx.lineTo(is.width / 2, 0);
       ctx.closePath();
       ctx.fill();
+
+      // Crystalline white glint
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(0, -is.height);
+      ctx.lineTo(-is.width / 4, 0);
+      ctx.stroke();
 
       ctx.restore();
     }
@@ -314,25 +462,25 @@ export class GameRenderer {
   drawFallingMeteors(ctx, particleSystem) {
     for (const m of particleSystem.fallingMeteors) {
       ctx.save();
-      ctx.translate(m.curX, m.curY);
-
-      // Giant glowing meteor body
-      const grad = ctx.createRadialGradient(0, 0, 4, 0, 0, 24);
-      grad.addColorStop(0, '#fef08a');
-      grad.addColorStop(0.3, '#f97316');
-      grad.addColorStop(0.7, '#ef4444');
-      grad.addColorStop(1, 'rgba(129, 140, 248, 0)');
+      // Fiery core of falling meteor
+      const grad = ctx.createRadialGradient(m.curX, m.curY, 2, m.curX, m.curY, 26);
+      grad.addColorStop(0, '#ffffff');
+      grad.addColorStop(0.3, '#fef08a');
+      grad.addColorStop(0.7, '#f43f5e');
+      grad.addColorStop(1, 'rgba(239, 68, 68, 0)');
 
       ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(0, 0, 24, 0, Math.PI * 2);
+      ctx.arc(m.curX, m.curY, 28, 0, Math.PI * 2);
       ctx.fill();
 
-      // Fiery core rock
-      ctx.fillStyle = '#450a0a';
+      // High velocity atmospheric fire streak
+      ctx.strokeStyle = 'rgba(251, 191, 36, 0.8)';
+      ctx.lineWidth = 10;
       ctx.beginPath();
-      ctx.arc(0, 0, 10, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.moveTo(m.curX, m.curY);
+      ctx.lineTo(m.curX - (m.targetX - m.startX) * 0.25, m.curY - (m.targetY - m.startY) * 0.25);
+      ctx.stroke();
 
       ctx.restore();
     }
@@ -340,49 +488,41 @@ export class GameRenderer {
 
   drawBaseProps(ctx, world) {
     for (const camp of world.campfires) {
-      // Warm ground radial glow
-      const grad = ctx.createRadialGradient(camp.x, camp.y, 10, camp.x, camp.y, camp.healRadius);
-      grad.addColorStop(0, 'rgba(251, 146, 60, 0.5)');
-      grad.addColorStop(0.5, 'rgba(234, 88, 12, 0.18)');
-      grad.addColorStop(1, 'rgba(234, 88, 12, 0)');
-      ctx.fillStyle = grad;
+      // Glow circle on ground
+      const glowGrad = ctx.createRadialGradient(camp.x, camp.y, 10, camp.x, camp.y, camp.healRadius);
+      glowGrad.addColorStop(0, 'rgba(249, 115, 22, 0.28)');
+      glowGrad.addColorStop(1, 'rgba(249, 115, 22, 0)');
+      ctx.fillStyle = glowGrad;
       ctx.beginPath();
       ctx.arc(camp.x, camp.y, camp.healRadius, 0, Math.PI * 2);
       ctx.fill();
 
-      // Stones
+      // Stone ring
       ctx.fillStyle = '#475569';
-      for (let a = 0; a < 8; a++) {
-        const ang = (a / 8) * Math.PI * 2;
+      for (let i = 0; i < 8; i++) {
+        const ang = (i / 8) * Math.PI * 2;
         ctx.beginPath();
-        ctx.arc(camp.x + Math.cos(ang) * 18, camp.y + Math.sin(ang) * 12, 5, 0, Math.PI * 2);
+        ctx.arc(camp.x + Math.cos(ang) * 14, camp.y + Math.sin(ang) * 9, 4, 0, Math.PI * 2);
         ctx.fill();
       }
 
-      // Logs
+      // Wooden logs
       ctx.fillStyle = '#78350f';
-      ctx.fillRect(camp.x - 14, camp.y - 4, 28, 7);
-      ctx.fillRect(camp.x - 4, camp.y - 12, 8, 24);
+      ctx.fillRect(camp.x - 10, camp.y - 3, 20, 6);
+      ctx.fillRect(camp.x - 3, camp.y - 10, 6, 20);
 
-      // Flickering anime flames
-      const flameH = 20 + Math.sin(this.time * 12) * 6;
-      ctx.fillStyle = '#ef4444';
-      ctx.beginPath();
-      ctx.moveTo(camp.x - 11, camp.y);
-      ctx.lineTo(camp.x, camp.y - flameH - 4);
-      ctx.lineTo(camp.x + 11, camp.y);
-      ctx.fill();
-
-      ctx.fillStyle = '#f59e0b';
+      // Flickering flame
+      const fH = 16 + Math.sin(this.time * 12) * 4;
+      ctx.fillStyle = '#f97316';
       ctx.beginPath();
       ctx.moveTo(camp.x - 7, camp.y);
-      ctx.lineTo(camp.x, camp.y - flameH * 0.7);
-      ctx.lineTo(camp.x + 7, camp.y);
+      ctx.quadraticCurveTo(camp.x, camp.y - fH - 5, camp.x + 7, camp.y);
       ctx.fill();
 
       ctx.fillStyle = '#fef08a';
       ctx.beginPath();
-      ctx.arc(camp.x, camp.y - 4, 4.5, 0, Math.PI * 2);
+      ctx.moveTo(camp.x - 4, camp.y);
+      ctx.quadraticCurveTo(camp.x, camp.y - fH + 3, camp.x + 4, camp.y);
       ctx.fill();
     }
   }
@@ -391,232 +531,208 @@ export class GameRenderer {
     for (const node of world.gatheringNodes) {
       if (!node.available) continue;
 
+      ctx.save();
+      const bob = Math.sin(this.time * 4 + node.x) * 3;
+
       if (node.type === 'herb') {
-        const bob = Math.sin(this.time * 3 + node.x) * 3;
-        ctx.fillStyle = 'rgba(244, 114, 182, 0.4)';
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, 16, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = '#22c55e';
-        ctx.fillRect(node.x - 1, node.y - 8 + bob, 3, 10);
-        ctx.beginPath();
-        ctx.arc(node.x - 4, node.y - 4 + bob, 3, 0, Math.PI * 2);
-        ctx.arc(node.x + 4, node.y - 4 + bob, 3, 0, Math.PI * 2);
-        ctx.fill();
-
+        // Moonbloom flower
         ctx.fillStyle = '#ec4899';
-        for (let p = 0; p < 5; p++) {
-          const pang = (p / 5) * Math.PI * 2 + this.time;
-          ctx.beginPath();
-          ctx.arc(node.x + Math.cos(pang) * 6, node.y - 10 + bob + Math.sin(pang) * 5, 4, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.fillStyle = '#fef08a';
         ctx.beginPath();
-        ctx.arc(node.x, node.y - 10 + bob, 3, 0, Math.PI * 2);
-        ctx.fill();
-      } else if (node.type === 'crystal') {
-        const bob = Math.sin(this.time * 2.5 + node.y) * 2;
-        ctx.fillStyle = 'rgba(56, 189, 248, 0.4)';
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, 18, 0, Math.PI * 2);
+        ctx.arc(node.x, node.y - 6 + bob, 6, 0, Math.PI * 2);
         ctx.fill();
 
+        ctx.fillStyle = '#fbcfe8';
+        ctx.beginPath();
+        ctx.arc(node.x, node.y - 6 + bob, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Stem & leaf
+        ctx.fillStyle = '#22c55e';
+        ctx.fillRect(node.x - 1, node.y - 1 + bob, 2, 7);
+      } else if (node.type === 'crystal') {
+        // Glowing mana crystal
         ctx.fillStyle = '#38bdf8';
         ctx.beginPath();
-        ctx.moveTo(node.x, node.y - 18 + bob);
-        ctx.lineTo(node.x + 8, node.y + bob);
+        ctx.moveTo(node.x, node.y - 14 + bob);
+        ctx.lineTo(node.x + 6, node.y - 4 + bob);
         ctx.lineTo(node.x, node.y + 4 + bob);
-        ctx.lineTo(node.x - 8, node.y + bob);
+        ctx.lineTo(node.x - 6, node.y - 4 + bob);
         ctx.closePath();
         ctx.fill();
 
-        ctx.fillStyle = '#bae6fd';
+        ctx.fillStyle = '#e0f2fe';
         ctx.beginPath();
-        ctx.moveTo(node.x, node.y - 18 + bob);
-        ctx.lineTo(node.x + 4, node.y - 2 + bob);
-        ctx.lineTo(node.x, node.y + 2 + bob);
+        ctx.moveTo(node.x, node.y - 14 + bob);
+        ctx.lineTo(node.x + 3, node.y - 4 + bob);
+        ctx.lineTo(node.x, node.y + 4 + bob);
         ctx.closePath();
         ctx.fill();
       }
+
+      ctx.restore();
     }
 
     for (const chest of world.chests) {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-      ctx.beginPath();
-      ctx.ellipse(chest.x, chest.y + 10, 16, 7, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = chest.opened ? '#78350f' : '#b45309';
-      ctx.fillRect(chest.x - 14, chest.y - 10, 28, 20);
-
-      ctx.fillStyle = '#fbbf24';
-      ctx.fillRect(chest.x - 14, chest.y - 10, 28, 3);
-      ctx.fillRect(chest.x - 14, chest.y + 4, 28, 3);
-      ctx.fillRect(chest.x - 3, chest.y - 2, 6, 6);
-
-      if (!chest.opened && Math.sin(this.time * 4 + chest.x) > 0.5) {
-        ctx.fillStyle = '#fef08a';
-        ctx.fillRect(chest.x + 10, chest.y - 16, 4, 4);
+      ctx.save();
+      if (!chest.opened) {
+        // Closed Golden Chest
+        ctx.fillStyle = '#78350f';
+        ctx.fillRect(chest.x - 12, chest.y - 10, 24, 18);
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillRect(chest.x - 12, chest.y - 6, 24, 4);
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillRect(chest.x - 2, chest.y - 4, 4, 5);
+      } else {
+        // Open Chest
+        ctx.fillStyle = '#451a03';
+        ctx.fillRect(chest.x - 12, chest.y - 4, 24, 12);
+        ctx.fillStyle = '#78350f';
+        ctx.fillRect(chest.x - 12, chest.y - 12, 24, 8);
       }
+      ctx.restore();
     }
   }
 
   drawDrops(ctx, npcManager) {
-    for (const drop of npcManager.drops) {
-      const bob = Math.sin(this.time * 8 + drop.x) * 4;
-      ctx.fillStyle = 'rgba(251, 191, 36, 0.4)';
-      ctx.beginPath();
-      ctx.arc(drop.x, drop.y + bob, 8, 0, Math.PI * 2);
-      ctx.fill();
+    for (const drop of npcManager.activeDrops) {
+      ctx.save();
+      const bob = Math.sin(this.time * 8 + drop.x) * 3;
+      if (drop.type === 'exp') {
+        ctx.fillStyle = '#38bdf8';
+        ctx.beginPath();
+        ctx.arc(drop.x, drop.y + bob, 4, 0, Math.PI * 2);
+        ctx.fill();
 
-      ctx.fillStyle = '#fbbf24';
-      ctx.beginPath();
-      ctx.arc(drop.x, drop.y + bob, 4.5, 0, Math.PI * 2);
-      ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(drop.x - 1, drop.y - 1 + bob, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // Gold Coin
+        ctx.fillStyle = '#fbbf24';
+        ctx.beginPath();
+        ctx.arc(drop.x, drop.y + bob, 5, 0, Math.PI * 2);
+        ctx.fill();
 
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.arc(drop.x - 1, drop.y + bob - 1, 1.5, 0, Math.PI * 2);
-      ctx.fill();
+        ctx.strokeStyle = '#d97706';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      ctx.restore();
     }
   }
 
   drawTree(ctx, tree) {
+    ctx.save();
+    // Shadow
     ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
     ctx.beginPath();
-    ctx.ellipse(tree.x, tree.y + 12, tree.radius * 0.9, tree.radius * 0.45, 0, 0, Math.PI * 2);
+    ctx.ellipse(tree.x, tree.y + 6, 20, 9, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = '#5c3a21';
-    ctx.fillRect(tree.x - 7, tree.y - 12, 14, 26);
+    // Trunk
+    ctx.fillStyle = '#5c2c16';
+    ctx.fillRect(tree.x - 6, tree.y - 16, 12, 22);
 
-    const isCherry = tree.type === 'cherry';
-    const baseColor = isCherry ? '#f472b6' : '#15803d';
-    const highlightColor = isCherry ? '#fbcfe8' : '#4ade80';
-    const darkColor = isCherry ? '#db2777' : '#166534';
-
-    ctx.fillStyle = darkColor;
+    // Foliage
+    ctx.fillStyle = '#14532d';
     ctx.beginPath();
-    ctx.arc(tree.x - 12, tree.y - 24, tree.radius * 0.85, 0, Math.PI * 2);
-    ctx.arc(tree.x + 12, tree.y - 24, tree.radius * 0.85, 0, Math.PI * 2);
-    ctx.arc(tree.x, tree.y - 38, tree.radius * 0.9, 0, Math.PI * 2);
+    ctx.arc(tree.x, tree.y - 36, 26, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = baseColor;
+    ctx.fillStyle = '#166534';
     ctx.beginPath();
-    ctx.arc(tree.x - 8, tree.y - 28, tree.radius * 0.75, 0, Math.PI * 2);
-    ctx.arc(tree.x + 8, tree.y - 28, tree.radius * 0.75, 0, Math.PI * 2);
-    ctx.arc(tree.x, tree.y - 42, tree.radius * 0.8, 0, Math.PI * 2);
+    ctx.arc(tree.x - 6, tree.y - 42, 20, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = highlightColor;
+    ctx.fillStyle = '#22c55e';
     ctx.beginPath();
-    ctx.arc(tree.x - 4, tree.y - 45, tree.radius * 0.45, 0, Math.PI * 2);
+    ctx.arc(tree.x + 8, tree.y - 40, 16, 0, Math.PI * 2);
     ctx.fill();
+
+    ctx.restore();
   }
 
   drawDecoration(ctx, dec) {
-    if (dec.type === 'lantern') {
+    ctx.save();
+    if (dec.type === 'ruin_pillar') {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.beginPath();
+      ctx.ellipse(dec.x, dec.y + 4, 16, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+
       ctx.fillStyle = '#64748b';
-      ctx.fillRect(dec.x - 6, dec.y - 16, 12, 16);
-      ctx.fillRect(dec.x - 10, dec.y - 20, 20, 4);
-
-      ctx.fillStyle = '#fef08a';
-      ctx.fillRect(dec.x - 4, dec.y - 14, 8, 8);
-
-      ctx.fillStyle = 'rgba(254, 240, 138, 0.2)';
-      ctx.beginPath();
-      ctx.arc(dec.x, dec.y - 10, 36, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (dec.type === 'ruin_pillar') {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-      ctx.beginPath();
-      ctx.ellipse(dec.x, dec.y + 8, 22, 10, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = '#475569';
-      ctx.fillRect(dec.x - 16, dec.y - 44, 32, 50);
-
-      ctx.fillStyle = '#818cf8';
-      ctx.fillRect(dec.x - 6, dec.y - 30, 4, 18);
-      ctx.fillStyle = '#15803d';
-      ctx.fillRect(dec.x - 14, dec.y - 6, 8, 6);
-    } else if (dec.type === 'table') {
-      ctx.fillStyle = '#78350f';
-      ctx.fillRect(dec.x, dec.y, dec.width, dec.height);
-      ctx.fillStyle = '#b45309';
-      ctx.fillRect(dec.x + 2, dec.y + 2, dec.width - 4, dec.height - 4);
-    } else if (dec.type === 'bench') {
-      ctx.fillStyle = '#78350f';
-      ctx.fillRect(dec.x, dec.y, dec.width, dec.height);
-    } else if (dec.type === 'guild_banner') {
-      ctx.fillStyle = '#475569';
-      ctx.fillRect(dec.x - 2, dec.y - 40, 4, 45);
-      ctx.fillStyle = '#78350f';
-      ctx.fillRect(dec.x + 2, dec.y - 38, 30, 22);
-      ctx.fillStyle = '#fbbf24';
-      ctx.fillRect(dec.x + 2, dec.y - 38, 30, 3);
-      ctx.fillRect(dec.x + 2, dec.y - 19, 30, 3);
-      ctx.beginPath();
-      ctx.arc(dec.x + 16, dec.y - 27, 4, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillRect(dec.x - 12, dec.y - 38, 24, 42);
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillRect(dec.x - 14, dec.y - 44, 28, 8);
+      ctx.fillRect(dec.x - 14, dec.y - 2, 28, 6);
     }
+    ctx.restore();
   }
 
   drawEnemy(ctx, enemy) {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-    ctx.beginPath();
-    ctx.ellipse(enemy.x, enemy.y + 8, enemy.radius * 0.8, enemy.radius * 0.4, 0, 0, Math.PI * 2);
-    ctx.fill();
-
+    ctx.save();
     const isHurt = enemy.flashHurt > 0;
 
+    // Drop Shadow
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.beginPath();
+    ctx.ellipse(enemy.x, enemy.y + 6, enemy.radius, enemy.radius * 0.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
     if (enemy.type === 'slime') {
-      const bounce = enemy.bounceOffset || 0;
-      const stretch = bounce > 2 ? 0.85 : 1.15;
-      ctx.fillStyle = isHurt ? '#ffffff' : '#22c55e';
+      // Slime squish & stretch hop animation
+      const squish = Math.sin(this.time * 8 + enemy.x) * 2.5;
+      const rX = enemy.radius + squish;
+      const rY = enemy.radius - squish;
+
+      ctx.fillStyle = isHurt ? '#ffffff' : (enemy.isRare ? '#fbbf24' : '#22c55e');
       ctx.beginPath();
-      ctx.ellipse(enemy.x, enemy.y - 4 - bounce, enemy.radius * stretch, enemy.radius * (2 - stretch) * 0.8, 0, 0, Math.PI * 2);
+      ctx.ellipse(enemy.x, enemy.y - rY * 0.7, rX, rY, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // Slime inner gelatinous nucleus core
-      ctx.fillStyle = '#16a34a';
+      // Translucent inner core
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
       ctx.beginPath();
-      ctx.arc(enemy.x, enemy.y - 3 - bounce, 5, 0, Math.PI * 2);
+      ctx.arc(enemy.x - 3, enemy.y - rY * 0.9, 4, 0, Math.PI * 2);
       ctx.fill();
 
       // Eyes
       ctx.fillStyle = '#0f172a';
-      ctx.fillRect(enemy.x - 5, enemy.y - 6 - bounce, 3, 4);
-      ctx.fillRect(enemy.x + 2, enemy.y - 6 - bounce, 3, 4);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(enemy.x - 4, enemy.y - 6 - bounce, 1, 2);
-      ctx.fillRect(enemy.x + 3, enemy.y - 6 - bounce, 1, 2);
+      ctx.fillRect(enemy.x - 5, enemy.y - rY * 0.8, 2.5, 4);
+      ctx.fillRect(enemy.x + 3, enemy.y - rY * 0.8, 2.5, 4);
     } else if (enemy.type === 'wolf') {
+      // Glade Wolf
       ctx.fillStyle = isHurt ? '#ffffff' : '#475569';
-      ctx.fillRect(enemy.x - 14, enemy.y - 12, 28, 14);
-      ctx.fillRect(enemy.x - 18, enemy.y - 16, 12, 12);
-      ctx.fillRect(enemy.x - 18, enemy.y - 20, 4, 5);
-      ctx.fillRect(enemy.x - 10, enemy.y - 20, 4, 5);
-
-      // Predator glowing eyes with trail
+      ctx.fillRect(enemy.x - 14, enemy.y - 16, 28, 18);
+      // Head
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(enemy.x + 8, enemy.y - 20, 12, 12);
+      // Glowing red predator eyes
       ctx.fillStyle = '#ef4444';
-      ctx.fillRect(enemy.x - 16, enemy.y - 14, 3.5, 3);
-      ctx.fillStyle = 'rgba(239, 68, 68, 0.35)';
-      ctx.fillRect(enemy.x - 12, enemy.y - 14, 5, 3);
+      ctx.fillRect(enemy.x + 14, enemy.y - 17, 3, 2);
+      // Tail
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(enemy.x - 18, enemy.y - 14, 6, 6);
     } else if (enemy.type === 'treant') {
-      ctx.fillStyle = isHurt ? '#ffffff' : '#3f2e1e';
-      ctx.fillRect(enemy.x - 18, enemy.y - 34, 36, 40);
+      // Whispering Treant
+      ctx.fillStyle = isHurt ? '#ffffff' : '#78350f';
+      ctx.fillRect(enemy.x - 12, enemy.y - 26, 24, 30);
+      // Moss top
       ctx.fillStyle = '#15803d';
-      ctx.fillRect(enemy.x - 22, enemy.y - 36, 44, 8);
-      ctx.fillStyle = '#fef08a';
-      ctx.fillRect(enemy.x - 8, enemy.y - 22, 5, 5);
-      ctx.fillRect(enemy.x + 3, enemy.y - 22, 5, 5);
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y - 28, 16, 0, Math.PI * 2);
+      ctx.fill();
+      // Glowing green hollow eyes
+      ctx.fillStyle = '#4ade80';
+      ctx.fillRect(enemy.x - 6, enemy.y - 18, 3, 3);
+      ctx.fillRect(enemy.x + 3, enemy.y - 18, 3, 3);
     } else if (enemy.type === 'golem') {
+      // Boss: Ancient Forest Golem
       ctx.fillStyle = isHurt ? '#ffffff' : '#334155';
-      ctx.fillRect(enemy.x - 36, enemy.y - 60, 72, 65);
+      ctx.fillRect(enemy.x - 36, enemy.y - 58, 72, 60);
+
+      // Heavy shoulders
       ctx.fillStyle = '#1e293b';
       ctx.fillRect(enemy.x - 46, enemy.y - 64, 22, 26);
       ctx.fillRect(enemy.x + 24, enemy.y - 64, 22, 26);
@@ -653,6 +769,8 @@ export class GameRenderer {
     ctx.fillStyle = '#f8fafc';
     ctx.textAlign = 'center';
     ctx.fillText(`${enemy.name} (Lv.${enemy.level})`, enemy.x, barY - 4);
+
+    ctx.restore();
   }
 
   drawCharacter(ctx, char, isPlayer) {
@@ -679,40 +797,36 @@ export class GameRenderer {
     ctx.fillStyle = '#fbbf24';
     ctx.fillRect(char.x - 8, char.y + 8 + bob, 16, 2);
 
-    // 2. Chibi Anime Head
+    // 2. Head / Skin
     ctx.fillStyle = isHurt ? '#ffffff' : (custom.skinColor || '#fde047');
-    ctx.beginPath();
-    ctx.arc(char.x, char.y - 12 + bob, 10, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillRect(char.x - 7, char.y - 20 + bob, 14, 13);
 
-    // 3. Anime Eyes
+    // 3. Face / Anime Eyes
     ctx.fillStyle = '#0f172a';
-    if (char.id === 'yamada') {
-      ctx.fillRect(char.x - 5, char.y - 12 + bob, 3, 2);
-      ctx.fillRect(char.x + 2, char.y - 12 + bob, 3, 2);
+    if (char.facing === 'left') {
+      ctx.fillRect(char.x - 6, char.y - 16 + bob, 2.5, 4);
+      ctx.fillRect(char.x - 1, char.y - 16 + bob, 2.5, 4);
+    } else if (char.facing === 'right') {
+      ctx.fillRect(char.x + 1, char.y - 16 + bob, 2.5, 4);
+      ctx.fillRect(char.x + 5, char.y - 16 + bob, 2.5, 4);
     } else {
-      ctx.fillRect(char.x - 5, char.y - 14 + bob, 3, 4);
-      ctx.fillRect(char.x + 2, char.y - 14 + bob, 3, 4);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(char.x - 4, char.y - 14 + bob, 1, 2);
-      ctx.fillRect(char.x + 3, char.y - 14 + bob, 1, 2);
+      ctx.fillRect(char.x - 5, char.y - 16 + bob, 2.5, 4);
+      ctx.fillRect(char.x + 3, char.y - 16 + bob, 2.5, 4);
     }
 
-    // 4. Hairstyle (Including Yamada's iconic Afro!)
-    const hairStyle = custom.hair;
-    const hairColor = custom.hairColor || '#1e293b';
+    // 4. Hair
+    const hairColor = custom.hairColor || '#38bdf8';
+    const hairStyle = custom.hair || 'anime_bangs';
     ctx.fillStyle = isHurt ? '#ffffff' : hairColor;
 
-    if (hairStyle === 'afro' || custom.headAccessory === 'afro') {
+    if (hairStyle === 'afro') {
+      // Yamada's legendary Afro
       ctx.beginPath();
-      ctx.arc(char.x, char.y - 18 + bob, 18, 0, Math.PI * 2);
-      ctx.arc(char.x - 10, char.y - 14 + bob, 12, 0, Math.PI * 2);
-      ctx.arc(char.x + 10, char.y - 14 + bob, 12, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-      ctx.beginPath();
-      ctx.arc(char.x - 4, char.y - 24 + bob, 6, 0, Math.PI * 2);
+      ctx.arc(char.x, char.y - 26 + bob, 20, 0, Math.PI * 2);
+      ctx.arc(char.x - 14, char.y - 24 + bob, 13, 0, Math.PI * 2);
+      ctx.arc(char.x + 14, char.y - 24 + bob, 13, 0, Math.PI * 2);
+      ctx.arc(char.x - 8, char.y - 36 + bob, 14, 0, Math.PI * 2);
+      ctx.arc(char.x + 8, char.y - 36 + bob, 14, 0, Math.PI * 2);
       ctx.fill();
     } else if (hairStyle === 'twintails') {
       ctx.beginPath();
@@ -753,7 +867,6 @@ export class GameRenderer {
       ctx.beginPath();
       ctx.arc(char.x + 9, char.y - 22 + bob, 4.5, 0, Math.PI * 2);
       ctx.fill();
-      // Arcane sparkle
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(char.x + 8, char.y - 23 + bob, 2, 2);
     } else if (weaponType === 'sword') {
@@ -790,10 +903,10 @@ export class GameRenderer {
 
     if (!isPlayer && char.state) {
       let stateLabel = '';
-      if (char.state === 'GATHER_HERBS') stateLabel = '🌸 Harvesting';
-      else if (char.state === 'FIGHT_SLIMES' || char.state === 'COMBAT') stateLabel = '⚔️ Battling';
-      else if (char.state === 'FLEE_CAMP') stateLabel = '🏃 Fleeing';
-      else if (char.state === 'REST_CAMP') stateLabel = '🍵 Resting';
+      if (char.state === 'GATHER_HERBS') stateLabel = 'Harvesting';
+      else if (char.state === 'FIGHT_SLIMES' || char.state === 'COMBAT') stateLabel = 'Battling';
+      else if (char.state === 'FLEE_CAMP') stateLabel = 'Fleeing';
+      else if (char.state === 'REST_CAMP') stateLabel = 'Resting';
 
       if (stateLabel) {
         ctx.font = '9px "Plus Jakarta Sans", sans-serif';
@@ -802,55 +915,148 @@ export class GameRenderer {
       }
     }
 
-    // 7. Visual Chat Speech Bubble with Anime Emote
+    // 7. Official Vector Badge Emote inside Chat Bubble (Zero OS emojis)
     if (char.emote) {
-      const bubbleBob = Math.sin(this.time * 8 + char.x) * 2;
-      const bubbleY = tagY - 26 + bubbleBob;
-      const bubbleW = 32;
-      const bubbleH = 22;
-      const radius = 8;
+      this.drawVectorEmoteBubble(ctx, char.x, tagY - 26, char.emote);
+    }
+  }
 
-      ctx.save();
-      // Drop shadow
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-      ctx.beginPath();
-      ctx.roundRect(char.x - bubbleW / 2 + 1, bubbleY - bubbleH / 2 + 2, bubbleW, bubbleH, radius);
-      ctx.fill();
+  /**
+   * Crisp Canvas Vector Emote Bubble (100% Vector drawn)
+   */
+  drawVectorEmoteBubble(ctx, x, baseY, emoteKey) {
+    const bubbleBob = Math.sin(this.time * 8 + x) * 2;
+    const bubbleY = baseY + bubbleBob;
+    const bubbleW = 32;
+    const bubbleH = 22;
+    const radius = 8;
 
-      // Bubble background
-      ctx.fillStyle = '#ffffff';
-      ctx.strokeStyle = '#1e293b';
-      ctx.lineWidth = 2;
+    ctx.save();
+    // Drop shadow
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    ctx.beginPath();
+    ctx.roundRect(x - bubbleW / 2 + 1, bubbleY - bubbleH / 2 + 2, bubbleW, bubbleH, radius);
+    ctx.fill();
+
+    // Bubble background
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(x - bubbleW / 2, bubbleY - bubbleH / 2, bubbleW, bubbleH, radius);
+    ctx.fill();
+    ctx.stroke();
+
+    // Speech bubble pointer arrow
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(x - 4, bubbleY + bubbleH / 2);
+    ctx.lineTo(x, bubbleY + bubbleH / 2 + 5);
+    ctx.lineTo(x + 4, bubbleY + bubbleH / 2);
+    ctx.fill();
+
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - 4, bubbleY + bubbleH / 2 - 1);
+    ctx.lineTo(x, bubbleY + bubbleH / 2 + 5);
+    ctx.lineTo(x + 4, bubbleY + bubbleH / 2 - 1);
+    ctx.stroke();
+
+    // Draw Vector Badge inside bubble
+    this.renderVectorEmoteIcon(ctx, x, bubbleY, emoteKey);
+
+    ctx.restore();
+  }
+
+  renderVectorEmoteIcon(ctx, x, y, key) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    if (key === '❤️' || key === 'emote_heart') {
+      // Smooth Red/Pink Heart
+      ctx.fillStyle = '#f43f5e';
       ctx.beginPath();
-      ctx.roundRect(char.x - bubbleW / 2, bubbleY - bubbleH / 2, bubbleW, bubbleH, radius);
+      ctx.moveTo(0, 4);
+      ctx.bezierCurveTo(-6, -2, -6, -6, 0, -3);
+      ctx.bezierCurveTo(6, -6, 6, -2, 0, 4);
       ctx.fill();
+    } else if (key === '✨' || key === 'emote_sparkle') {
+      // Golden 4-point magic star
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath();
+      ctx.moveTo(0, -6);
+      ctx.quadraticCurveTo(1, -1, 6, 0);
+      ctx.quadraticCurveTo(1, 1, 0, 6);
+      ctx.quadraticCurveTo(-1, 1, -6, 0);
+      ctx.quadraticCurveTo(-1, -1, 0, -6);
+      ctx.fill();
+    } else if (key === '💧' || key === 'emote_sweat') {
+      // Cyan tear/sweat droplet
+      ctx.fillStyle = '#38bdf8';
+      ctx.beginPath();
+      ctx.moveTo(0, -5);
+      ctx.quadraticCurveTo(4, 0, 0, 5);
+      ctx.quadraticCurveTo(-4, 0, 0, -5);
+      ctx.fill();
+    } else if (key === '💢' || key === 'emote_angry') {
+      // Anime anger cross
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(-3, -3, 3, 0, Math.PI / 2);
+      ctx.arc(3, -3, 3, Math.PI / 2, Math.PI);
+      ctx.arc(3, 3, 3, Math.PI, (3 * Math.PI) / 2);
+      ctx.arc(-3, 3, 3, (3 * Math.PI) / 2, Math.PI * 2);
       ctx.stroke();
-
-      // Speech bubble pointer arrow pointing down to head
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.moveTo(char.x - 4, bubbleY + bubbleH / 2);
-      ctx.lineTo(char.x, bubbleY + bubbleH / 2 + 5);
-      ctx.lineTo(char.x + 4, bubbleY + bubbleH / 2);
-      ctx.fill();
-
-      // Pointer stroke
-      ctx.strokeStyle = '#1e293b';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(char.x - 4, bubbleY + bubbleH / 2 - 1);
-      ctx.lineTo(char.x, bubbleY + bubbleH / 2 + 5);
-      ctx.lineTo(char.x + 4, bubbleY + bubbleH / 2 - 1);
-      ctx.stroke();
-
-      // Emote Icon
-      ctx.font = '15px sans-serif';
+    } else if (key === '💤' || key === 'emote_sleep') {
+      // Purple Zzz
+      ctx.fillStyle = '#a855f7';
+      ctx.font = 'bold 11px monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(char.emote, char.x, bubbleY);
-
-      ctx.restore();
+      ctx.fillText('Zzz', 0, 0);
+    } else if (key === '❓' || key === 'emote_help') {
+      // Blue question mark
+      ctx.fillStyle = '#0284c7';
+      ctx.font = 'bold 12px "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('?', 0, -1);
+    } else if (key === '🍫' || key === 'emote_choco') {
+      // Chocolate bar
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(-6, -5, 12, 10);
+      ctx.fillStyle = '#92400e';
+      ctx.fillRect(-5, -4, 4, 3.5);
+      ctx.fillRect(1, -4, 4, 3.5);
+      ctx.fillRect(-5, 0.5, 4, 3.5);
+      ctx.fillRect(1, 0.5, 4, 3.5);
+    } else if (key === '⚔️' || key === 'emote_swords') {
+      // Crossed swords
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-5, -5); ctx.lineTo(5, 5);
+      ctx.moveTo(5, -5); ctx.lineTo(-5, 5);
+      ctx.stroke();
+    } else if (key === '🥦' || key === 'emote_afro') {
+      // Yamada Afro vector cloud
+      ctx.fillStyle = '#334155';
+      ctx.beginPath();
+      ctx.arc(0, -1, 5, 0, Math.PI * 2);
+      ctx.arc(-4, 0, 3.5, 0, Math.PI * 2);
+      ctx.arc(4, 0, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Default neat chat dot icon
+      ctx.fillStyle = '#38bdf8';
+      ctx.beginPath();
+      ctx.arc(0, 0, 4, 0, Math.PI * 2);
+      ctx.fill();
     }
+
+    ctx.restore();
   }
 
   drawParticles(ctx, particleSystem) {
@@ -877,11 +1083,37 @@ export class GameRenderer {
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
         ctx.fill();
       } else if (p.type === 'slash_arc') {
-        ctx.strokeStyle = p.color;
-        ctx.lineWidth = 3.5;
+        // High-Quality Directional Sword Slash Trail
+        ctx.save();
+        ctx.translate(p.x, p.y);
+
+        const rotAngle = p.angle !== null && p.angle !== undefined ? p.angle : (
+          p.facing === 'right' ? 0 : (p.facing === 'down' ? Math.PI / 2 : (p.facing === 'left' ? Math.PI : -Math.PI / 2))
+        );
+        ctx.rotate(rotAngle);
+
+        // Radiant curved anime crescent blade swipe
+        const grad = ctx.createLinearGradient(-15, -20, 25, 20);
+        grad.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+        grad.addColorStop(0.3, 'rgba(56, 189, 248, 0.85)');
+        grad.addColorStop(0.8, 'rgba(2, 132, 199, 0.4)');
+        grad.addColorStop(1, 'rgba(14, 165, 233, 0)');
+
+        ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 24, 0, Math.PI * 0.85);
+        ctx.arc(0, 0, 30, -Math.PI * 0.45, Math.PI * 0.45, false);
+        ctx.arc(0, 0, 16, Math.PI * 0.45, -Math.PI * 0.45, true);
+        ctx.closePath();
+        ctx.fill();
+
+        // Sharp edge highlight
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, 30, -Math.PI * 0.4, Math.PI * 0.4);
         ctx.stroke();
+
+        ctx.restore();
       } else if (p.type === 'dust') {
         ctx.fillStyle = p.color;
         ctx.beginPath();
@@ -932,31 +1164,54 @@ export class GameRenderer {
     }
   }
 
-  // Screen-Space Lighting & Atmosphere (Lush Anime God-Rays & Vignette)
-  drawAtmosphere(ctx) {
+  /**
+   * Screen-Space Atmospheric Shader Pipeline:
+   * - Volumetric God-Rays with trigonometric sweep
+   * - Chromatic Aberration during Screen Shake impacts
+   * - Dynamic Radial Warm Light around Campfire & active magic nodes
+   * - Japanese Anime Pastel Vignette Grading
+   */
+  drawAtmosphere(ctx, world, player) {
     ctx.save();
 
-    // Subtle sunbeam god-rays streaming diagonally
-    const timeOffset = Math.sin(this.time * 0.5) * 40;
-    ctx.fillStyle = 'rgba(254, 240, 138, 0.035)';
-    for (let i = 0; i < 4; i++) {
+    // 1. Dynamic Sunbeam God-Rays streaming diagonally
+    const rayCycle = Math.sin(this.time * 0.4) * 50;
+    ctx.fillStyle = 'rgba(254, 240, 138, 0.038)';
+    for (let i = 0; i < 5; i++) {
       ctx.beginPath();
-      const xStart = (i * 350) + timeOffset;
+      const xStart = (i * 320) + rayCycle;
       ctx.moveTo(xStart, 0);
-      ctx.lineTo(xStart + 160, 0);
-      ctx.lineTo(xStart - 100, this.height);
-      ctx.lineTo(xStart - 260, this.height);
+      ctx.lineTo(xStart + 180, 0);
+      ctx.lineTo(xStart - 120, this.height);
+      ctx.lineTo(xStart - 300, this.height);
       ctx.closePath();
       ctx.fill();
     }
 
-    // Soft cinematic vignette
+    // 2. Chromatic Aberration Shader effect on Heavy Screen Shake
+    if (this.shakeAmount > 4) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      const offset = Math.min(5, this.shakeAmount * 0.4);
+
+      // Red fringe
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.08)';
+      ctx.fillRect(offset, 0, this.width, this.height);
+
+      // Cyan fringe
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.08)';
+      ctx.fillRect(-offset, 0, this.width, this.height);
+      ctx.restore();
+    }
+
+    // 3. Cinematic Vignette & Color Grading
     const vignette = ctx.createRadialGradient(
       this.width / 2, this.height / 2, this.width * 0.35,
-      this.width / 2, this.height / 2, this.width * 0.75
+      this.width / 2, this.height / 2, this.width * 0.78
     );
     vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    vignette.addColorStop(1, 'rgba(11, 15, 25, 0.45)');
+    vignette.addColorStop(0.7, 'rgba(11, 15, 25, 0.25)');
+    vignette.addColorStop(1, 'rgba(8, 12, 22, 0.55)');
 
     ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, this.width, this.height);
