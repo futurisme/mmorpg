@@ -802,22 +802,54 @@ export class GameRenderer {
       }
     }
 
-    // 7. Emote Bubble
+    // 7. Visual Chat Speech Bubble with Anime Emote
     if (char.emote) {
-      const bubbleY = tagY - 24;
-      ctx.fillStyle = '#ffffff';
+      const bubbleBob = Math.sin(this.time * 8 + char.x) * 2;
+      const bubbleY = tagY - 26 + bubbleBob;
+      const bubbleW = 32;
+      const bubbleH = 22;
+      const radius = 8;
+
+      ctx.save();
+      // Drop shadow
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
       ctx.beginPath();
-      ctx.arc(char.x, bubbleY, 12, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(char.x - 3, bubbleY + 10);
-      ctx.lineTo(char.x, bubbleY + 14);
-      ctx.lineTo(char.x + 3, bubbleY + 10);
+      ctx.roundRect(char.x - bubbleW / 2 + 1, bubbleY - bubbleH / 2 + 2, bubbleW, bubbleH, radius);
       ctx.fill();
 
-      ctx.font = '14px sans-serif';
+      // Bubble background
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(char.x - bubbleW / 2, bubbleY - bubbleH / 2, bubbleW, bubbleH, radius);
+      ctx.fill();
+      ctx.stroke();
+
+      // Speech bubble pointer arrow pointing down to head
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(char.x - 4, bubbleY + bubbleH / 2);
+      ctx.lineTo(char.x, bubbleY + bubbleH / 2 + 5);
+      ctx.lineTo(char.x + 4, bubbleY + bubbleH / 2);
+      ctx.fill();
+
+      // Pointer stroke
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(char.x - 4, bubbleY + bubbleH / 2 - 1);
+      ctx.lineTo(char.x, bubbleY + bubbleH / 2 + 5);
+      ctx.lineTo(char.x + 4, bubbleY + bubbleH / 2 - 1);
+      ctx.stroke();
+
+      // Emote Icon
+      ctx.font = '15px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(char.emote, char.x, bubbleY + 5);
+      ctx.textBaseline = 'middle';
+      ctx.fillText(char.emote, char.x, bubbleY);
+
+      ctx.restore();
     }
   }
 

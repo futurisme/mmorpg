@@ -130,7 +130,7 @@ export class UIManager {
       <!-- Interaction Prompt (Center Bottom - Doesn't overlap hotbar) -->
       <div id="interact-prompt" class="pointer-events-none absolute bottom-24 left-1/2 -translate-x-1/2 z-20 hidden">
         <div class="rpg-panel rpg-panel-gold rounded-full px-4 py-1.5 flex items-center gap-2 shadow-2xl animate-bounce">
-          <span class="w-5 h-5 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center">E</span>
+          <span class="w-5 h-5 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center">F</span>
           <span id="interact-text" class="text-xs font-bold text-amber-100">Talk to Yamada</span>
         </div>
       </div>
@@ -189,6 +189,10 @@ export class UIManager {
           <div class="w-px h-7 bg-slate-700 mx-0.5"></div>
 
           <!-- Quick Menus -->
+          <button id="btn-emotes" class="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-amber-300 border border-slate-700 hover:border-amber-400 flex items-center gap-1 transition-all" title="Anime Emotes Panel [E]">
+            <span>💬</span>
+            <span class="hidden lg:inline">Emotes [E]</span>
+          </button>
           <button id="btn-custom" class="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-200 border border-slate-700 flex items-center gap-1 transition-all" title="Character Profile [C]">
             <span>👤</span>
             <span class="hidden lg:inline">[C]</span>
@@ -209,7 +213,7 @@ export class UIManager {
 
         <!-- Controls Guide (Compact, doesn't wrap awkwardly) -->
         <div class="text-[9px] text-slate-400 font-medium tracking-wide drop-shadow bg-slate-950/70 px-2.5 py-0.5 rounded-full border border-slate-800">
-          WASD Move · Shift Sprint · Space Attack · 1-5 Skills · E Interact · C Profile · I Bag · Q Quest · M Map
+          WASD Move · Shift Sprint · Space Attack · 1-5 Skills · E Emotes · F Interact · C Profile · I Bag · Q Quest · M Map
         </div>
       </div>
 
@@ -350,6 +354,7 @@ export class UIManager {
     });
 
     // Modal buttons
+    document.getElementById('btn-emotes')?.addEventListener('click', () => this.toggleEmotePanel());
     document.getElementById('player-avatar-preview')?.addEventListener('click', () => this.openCustomizerModal());
     document.getElementById('btn-custom')?.addEventListener('click', () => this.openCustomizerModal());
     document.getElementById('btn-inventory')?.addEventListener('click', () => this.openInventoryModal());
@@ -738,6 +743,142 @@ export class UIManager {
     const overlay = document.getElementById('modal-overlay');
     if (overlay) overlay.classList.add('hidden');
     sound.playClick();
+  }
+
+  toggleEmotePanel() {
+    if (this.activeModal === 'emotes') {
+      this.closeModal();
+    } else {
+      this.openEmoteModal();
+    }
+  }
+
+  triggerPlayerEmote(symbol, label) {
+    this.player.triggerEmote(symbol);
+    sound.playEmote();
+
+    this.chatMessages.push({
+      sender: this.player.name,
+      channel: 'all',
+      text: `* Expressed ${symbol} [${label}] *`
+    });
+    this.renderChatMessages();
+
+    // Nearby NPCs react to player's emote
+    for (const npc of this.npcManager.npcs) {
+      const d = Math.hypot(npc.x - this.player.x, npc.y - this.player.y);
+      if (d < 380) {
+        setTimeout(() => {
+          if (symbol === '❤️') {
+            if (npc.id === 'akane') {
+              npc.emote = '❤️';
+              npc.emoteTimer = 2.5;
+            } else if (npc.id === 'yamada') {
+              npc.emote = '✨';
+              npc.emoteTimer = 2.0;
+            } else if (npc.id === 'rurihime') {
+              npc.emote = '🍫';
+              npc.emoteTimer = 2.0;
+            }
+          } else if (symbol === '🍫') {
+            if (npc.id === 'rurihime') {
+              npc.emote = '✨';
+              npc.emoteTimer = 2.5;
+            } else {
+              npc.emote = '😋';
+              npc.emoteTimer = 2.0;
+            }
+          } else if (symbol === '🥦') {
+            if (npc.id === 'yamada') {
+              npc.emote = '💢';
+              npc.emoteTimer = 2.2;
+            } else {
+              npc.emote = '✨';
+              npc.emoteTimer = 2.0;
+            }
+          } else if (symbol === '⚔️') {
+            if (npc.id === 'takezo') {
+              npc.emote = '⚔️';
+              npc.emoteTimer = 2.5;
+            } else if (npc.id === 'yamada') {
+              npc.emote = '✨';
+              npc.emoteTimer = 2.0;
+            }
+          } else {
+            npc.emote = symbol;
+            npc.emoteTimer = 2.0;
+          }
+        }, 250);
+      }
+    }
+  }
+
+  openEmoteModal() {
+    this.activeModal = 'emotes';
+    const overlay = document.getElementById('modal-overlay');
+    const content = document.getElementById('modal-content');
+    if (!overlay || !content) return;
+
+    sound.playClick();
+    overlay.classList.remove('hidden');
+
+    const emoteList = [
+      { id: '1', symbol: '❤️', label: 'Heart', desc: 'Love & gratitude', key: '1' },
+      { id: '2', symbol: '✨', label: 'Sparkle', desc: 'Lv.999 power flex', key: '2' },
+      { id: '3', symbol: '💧', label: 'Sweatdrop', desc: 'Panic & embarrassment', key: '3' },
+      { id: '4', symbol: '💢', label: 'Angry', desc: 'Tsundere comedy rage', key: '4' },
+      { id: '5', symbol: '💤', label: 'Sleepy', desc: 'Resting & AFK', key: '5' },
+      { id: '6', symbol: '❓', label: 'Question', desc: 'Curious inquiry', key: '6' },
+      { id: '7', symbol: '🍫', label: 'Chocolate', desc: 'Guild sweets snack', key: '7' },
+      { id: '8', symbol: '⚔️', label: 'Battle Ready', desc: 'Ready to fight monsters!', key: '8' },
+      { id: '9', symbol: '🎉', label: 'Celebrate', desc: 'Cheering & victory fanfare', key: '9' },
+      { id: '10', symbol: '🍵', label: 'Cozy Tea', desc: 'Resting by hearth', key: '0' },
+      { id: '11', symbol: '🥦', label: 'Yamada Afro', desc: 'Legendary afro salute', key: '-' },
+      { id: '12', symbol: '💬', label: 'Greeting', desc: 'Konnichiwa, adventurers!', key: '=' }
+    ];
+
+    content.innerHTML = `
+      <div class="flex items-center justify-between border-b border-slate-700/80 pb-2.5 mb-3">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">💬</span>
+          <div>
+            <h2 class="text-base font-bold text-slate-100">Anime Emote Selection [E]</h2>
+            <p class="text-[11px] text-slate-400">Display visual speech bubbles above your character</p>
+          </div>
+        </div>
+        <button id="modal-close-btn" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center font-bold text-xs">✕</button>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-80 overflow-y-auto p-1">
+        ${emoteList.map(item => `
+          <button class="select-emote-item p-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 hover:border-amber-400 flex flex-col items-center justify-center gap-1 transition-all group hover:scale-[1.03] text-center" data-symbol="${item.symbol}" data-label="${item.label}">
+            <span class="text-2xl group-hover:scale-125 transition-transform filter drop-shadow">${item.symbol}</span>
+            <div class="flex items-center gap-1">
+              <span class="text-[9px] bg-slate-800 group-hover:bg-amber-400 group-hover:text-slate-950 text-slate-300 font-mono font-bold px-1 rounded border border-slate-700">${item.key}</span>
+              <span class="text-xs font-bold text-slate-200 group-hover:text-amber-300">${item.label}</span>
+            </div>
+            <span class="text-[9px] text-slate-500 truncate w-full text-center">${item.desc}</span>
+          </button>
+        `).join('')}
+      </div>
+
+      <div class="mt-3 pt-2.5 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-400">
+        <span>Press <kbd class="px-1 py-0.5 rounded bg-slate-800 text-amber-300 font-mono font-bold">1-9</kbd> or click to express</span>
+        <button id="close-emote-btn" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs">Close [Esc]</button>
+      </div>
+    `;
+
+    document.getElementById('modal-close-btn')?.addEventListener('click', () => this.closeModal());
+    document.getElementById('close-emote-btn')?.addEventListener('click', () => this.closeModal());
+
+    content.querySelectorAll('.select-emote-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const symbol = btn.getAttribute('data-symbol');
+        const label = btn.getAttribute('data-label');
+        this.triggerPlayerEmote(symbol, label);
+        this.closeModal();
+      });
+    });
   }
 
   openCustomizerModal() {

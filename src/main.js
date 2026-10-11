@@ -60,8 +60,40 @@ class GameEngine {
 
       this.input.keys[e.code] = true;
 
+      // Handle Emote Selection shortcuts when Emote modal is active
+      if (this.ui.activeModal === 'emotes') {
+        if (e.code === 'KeyE' || e.code === 'Escape') {
+          this.ui.closeModal();
+          return;
+        }
+
+        const emoteKeyMap = {
+          'Digit1': { symbol: '❤️', label: 'Heart' },
+          'Digit2': { symbol: '✨', label: 'Sparkle' },
+          'Digit3': { symbol: '💧', label: 'Sweatdrop' },
+          'Digit4': { symbol: '💢', label: 'Angry' },
+          'Digit5': { symbol: '💤', label: 'Sleepy' },
+          'Digit6': { symbol: '❓', label: 'Question' },
+          'Digit7': { symbol: '🍫', label: 'Chocolate' },
+          'Digit8': { symbol: '⚔️', label: 'Battle Ready' },
+          'Digit9': { symbol: '🎉', label: 'Celebrate' },
+          'Digit0': { symbol: '🍵', label: 'Cozy Tea' },
+          'Minus': { symbol: '🥦', label: 'Yamada Afro' },
+          'Equal': { symbol: '💬', label: 'Greeting' }
+        };
+
+        if (emoteKeyMap[e.code]) {
+          const item = emoteKeyMap[e.code];
+          this.ui.triggerPlayerEmote(item.symbol, item.label);
+          this.ui.closeModal();
+          return;
+        }
+      }
+
       // Handle hotkeys
-      if (e.code === 'KeyE' || e.code === 'KeyF') {
+      if (e.code === 'KeyE') {
+        this.ui.toggleEmotePanel();
+      } else if (e.code === 'KeyF') {
         this.ui.handleInteract();
       } else if (e.code === 'Digit1') {
         this.player.useSkill(1, this.world, this.particleSystem, this.combatTextSystem, this.npcManager);
